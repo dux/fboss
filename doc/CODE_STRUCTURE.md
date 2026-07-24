@@ -94,7 +94,7 @@ All `@MainActor`:
 - **ShortcutsManager** -- sidebar pinned folders (`~/.config/dux-file-explorer/folders.txt`)
 - **ColorTagManager** -- 4-color label system (`color-labels.json`)
 - **FolderIconManager** -- custom emoji folder icons (`folder-icons.json`)
-- **IconProvider** -- catppuccin SVG file icons, cached
+- **IconProvider** -- bundled vscode-icons file SVGs and Catppuccin folder SVGs, cached
 - **GitRepoManager** -- detects `.git`, parses remote URL for web links
 - **NpmPackageManager** -- detects `package.json`, provides npm link
 - **MovieManager** -- OMDB movie metadata + poster
@@ -210,7 +210,7 @@ app/
     ShortcutsManager.swift           -- Sidebar built-ins + pinned folders
     ColorTagManager.swift            -- Color label system
     FolderIconManager.swift          -- Custom emoji folder icons
-    IconProvider.swift               -- Catppuccin SVG file icons
+    IconProvider.swift               -- vscode-icons files and Catppuccin folders
     GitRepoManager.swift             -- Git repo detection
     NpmPackageManager.swift          -- npm package detection
     MountsManager.swift              -- SSH/SMB favorites and connection

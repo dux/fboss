@@ -1,7 +1,6 @@
 import AppKit
-import SwiftUI
 
-/// Provides catppuccin-themed SVG icons for known file types,
+/// Provides vscode-icons SVG icons for known file types,
 /// falling back to macOS system icons for unrecognized ones.
 @MainActor
 final class IconProvider {
@@ -55,11 +54,14 @@ final class IconProvider {
         "php": "php",
         "groovy": "groovy",
         "gradle": "groovy",
-        "cs": "lib",
-        "fs": "lib",
-        "fsx": "lib",
-        "r": "lib",
-        "vb": "lib",
+        "cs": "csharp",
+        "csproj": "csharp",
+        "fs": "fsharp",
+        "fsx": "fsharp",
+        "fsproj": "fsharp",
+        "r": "r",
+        "vb": "vb",
+        "vbproj": "vb",
         "nix": "nix",
         "sh": "bash",
         "bash": "bash",
@@ -80,7 +82,7 @@ final class IconProvider {
         "svg": "svg",
         "graphql": "graphql",
         "gql": "graphql",
-        "vue": "lib",
+        "vue": "vue",
         "fez": "html",
         "postcss": "postcss",
 
@@ -226,17 +228,17 @@ final class IconProvider {
         ".env.local": "env",
         ".env.development": "env",
         ".env.production": "env",
-        "package.json": "json",
-        "package-lock.json": "npm-lock",
+        "package.json": "npm",
+        "package-lock.json": "npm",
         "yarn.lock": "yarn-lock",
-        "pnpm-lock.yaml": "lock",
+        "pnpm-lock.yaml": "pnpm",
         "gemfile": "ruby",
-        "gemfile.lock": "lock",
+        "gemfile.lock": "ruby",
         "rakefile": "ruby",
         "cargo.toml": "rust",
-        "cargo.lock": "lock",
+        "cargo.lock": "rust",
         "go.mod": "go-mod",
-        "go.sum": "lock",
+        "go.sum": "go-mod",
         "license": "license",
         "license.md": "license",
         "license.txt": "license",
@@ -246,17 +248,23 @@ final class IconProvider {
         "changelog.md": "todo",
         "todo": "todo",
         "todo.md": "todo",
-        ".eslintrc": "config",
-        ".eslintrc.json": "config",
-        ".prettierrc": "config",
-        ".editorconfig": "config",
-        "tsconfig.json": "config",
+        ".eslintrc": "eslint",
+        ".eslintrc.json": "eslint",
+        "eslint.config.js": "eslint",
+        "eslint.config.mjs": "eslint",
+        "eslint.config.ts": "eslint",
+        ".prettierrc": "prettier",
+        ".prettierrc.json": "prettier",
+        "prettier.config.js": "prettier",
+        "prettier.config.mjs": "prettier",
+        ".editorconfig": "editorconfig",
+        "tsconfig.json": "tsconfig",
         "tailwind.config.js": "tailwind",
         "tailwind.config.ts": "tailwind",
         "postcss.config.js": "postcss",
         "postcss.config.mjs": "postcss",
-        "vite.config.ts": "config",
-        "vite.config.js": "config",
+        "vite.config.ts": "vite",
+        "vite.config.js": "vite",
         "prisma": "prisma"
     ]
 
@@ -268,6 +276,21 @@ final class IconProvider {
             return folderIcon(for: url)
         }
         return fileIcon(for: url)
+    }
+
+    static func resourceName(for url: URL, isDirectory: Bool) -> String? {
+        if isDirectory {
+            guard url.pathExtension.lowercased() != "app" else {
+                return nil
+            }
+            return folderMap[url.lastPathComponent.lowercased()] ?? "_folder"
+        }
+
+        let filename = url.lastPathComponent.lowercased()
+        if let iconName = nameMap[filename] {
+            return iconName
+        }
+        return extMap[url.pathExtension.lowercased()] ?? "_file"
     }
 
     // MARK: - Folder name -> specialized SVG mapping
@@ -368,30 +391,16 @@ final class IconProvider {
             return icon
         }
 
-        let name = url.lastPathComponent.lowercased()
-        if let iconName = Self.folderMap[name], let img = loadSVG(iconName) {
+        if let iconName = Self.resourceName(for: url, isDirectory: true),
+           let img = loadSVG(iconName) {
             return img
         }
-        if let img = loadSVG("_folder") { return img }
         return NSWorkspace.shared.icon(forFile: url.path)
     }
 
     private func fileIcon(for url: URL) -> NSImage {
-        let filename = url.lastPathComponent.lowercased()
-        let ext = url.pathExtension.lowercased()
-
-        // Check exact filename first
-        if let iconName = Self.nameMap[filename], let img = loadSVG(iconName) {
-            return img
-        }
-
-        // Check extension
-        if let iconName = Self.extMap[ext], let img = loadSVG(iconName) {
-            return img
-        }
-
-        // Default file icon
-        if let img = loadSVG("_file") {
+        if let iconName = Self.resourceName(for: url, isDirectory: false),
+           let img = loadSVG(iconName) {
             return img
         }
         return NSWorkspace.shared.icon(forFile: url.path)
@@ -409,16 +418,7 @@ final class IconProvider {
         }
 
         guard let data = try? Data(contentsOf: url),
-              let svgString = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-
-        // Scale SVG to desired size for crisp rendering
-        let scaledSVG = svgString.replacingOccurrences(of: "width=\"16\"", with: "width=\"32\"")
-            .replacingOccurrences(of: "height=\"16\"", with: "height=\"32\"")
-
-        guard let scaledData = scaledSVG.data(using: .utf8),
-              let nsImage = NSImage(data: scaledData) else {
+              let nsImage = NSImage(data: data) else {
             return nil
         }
 

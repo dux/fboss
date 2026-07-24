@@ -156,7 +156,8 @@ curl -fsSL https://raw.githubusercontent.com/dux/file_explorer_swift/main/instal
 - API Keys: OMDB API key for movie info
 
 ### Custom file icons
-- Catppuccin-themed SVG icons for 100+ file types
+- Bundled vscode-icons SVG artwork for 100+ file types
+- Original Catppuccin-themed directory icons
 - Covers programming languages, config files, media, documents, and more
 - Falls back to macOS system icons for unrecognized types
 

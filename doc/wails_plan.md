@@ -9,7 +9,7 @@ Port the macOS File Explorer (Swift/SwiftUI) to Windows and Linux using Wails (G
 - **Backend:** Go (Wails v2)
 - **Frontend:** Svelte
 - **Target:** Windows first, then Linux
-- **Icons:** Reuse catppuccin SVG set from `app/Resources/Icons/`
+- **Icons:** Reuse bundled vscode-icons file SVGs and Catppuccin folder SVGs from `app/Resources/Icons/`
 
 ## Project Structure
 
@@ -251,8 +251,8 @@ Match the Swift app's 3-pane layout exactly:
 - Selection (global): green at 15% opacity
 - Text sizes: match the Swift `.textStyle()` system — default 14px, small 12px, buttons 13px, title 15px semibold
 - Icons: 22px in file rows, 26px in sidebar, 16-18px in context menu
-- Folder icons: blue filled SVGs from `app/Resources/Icons/`
-- File icons: catppuccin SVGs, rendered at 2x for crispness
+- Folder icons: bundled Catppuccin SVGs from `app/Resources/Icons/`
+- File icons: bundled vscode-icons SVGs, rendered as vectors for crispness
 
 ### Font
 System font (Segoe UI on Windows, system sans on Linux). Monospace for code previews and shortcut keys.

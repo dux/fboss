@@ -3,6 +3,43 @@ import Testing
 import Foundation
 @testable import FileExplorer
 
+// MARK: - IconProvider Tests
+
+@Suite("IconProvider")
+struct IconProviderTests {
+    @Test("uses vscode-icons resource names for file extensions")
+    @MainActor func fileExtensionResource() {
+        let url = URL(fileURLWithPath: "/project/App.swift")
+        #expect(IconProvider.resourceName(for: url, isDirectory: false) == "swift")
+    }
+
+    @Test("exact filenames take priority over their extensions")
+    @MainActor func exactFilenameResource() {
+        let url = URL(fileURLWithPath: "/project/package.json")
+        #expect(IconProvider.resourceName(for: url, isDirectory: false) == "npm")
+    }
+
+    @Test("uses specialized directory resources")
+    @MainActor func directoryResource() {
+        let url = URL(fileURLWithPath: "/project/src")
+        #expect(IconProvider.resourceName(for: url, isDirectory: true) == "folder_src")
+    }
+
+    @Test("keeps application bundle icons native")
+    @MainActor func applicationResource() {
+        let url = URL(fileURLWithPath: "/Applications/Safari.app")
+        #expect(IconProvider.resourceName(for: url, isDirectory: true) == nil)
+    }
+
+    @Test("unknown items use bundled defaults")
+    @MainActor func defaultResources() {
+        let file = URL(fileURLWithPath: "/project/example.unknown-extension")
+        let folder = URL(fileURLWithPath: "/project/unknown-folder")
+        #expect(IconProvider.resourceName(for: file, isDirectory: false) == "_file")
+        #expect(IconProvider.resourceName(for: folder, isDirectory: true) == "_folder")
+    }
+}
+
 // MARK: - CachedFileInfo Tests
 
 @Suite("CachedFileInfo")
