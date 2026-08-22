@@ -8,10 +8,10 @@ enum PreviewKind: Equatable {
 
 private let previewImageExtensions = FileExtensions.images
 
-func detectPreviewKind(for url: URL, isDirectoryHint: Bool? = nil) -> PreviewKind {
+func detectPreviewKind(for url: URL, isDirectoryHint: Bool = false) -> PreviewKind {
     guard url.isFileURL else {
         // Remote: no folder previews; files preview via a downloaded local copy
-        if isDirectoryHint == true { return .none }
+        if isDirectoryHint { return .none }
         if MovieManager.videoExtensions.contains(url.pathExtension.lowercased()) { return .none }
         return .standard
     }
@@ -144,7 +144,7 @@ struct MainContentView: View {
                         return
                     }
                     let u = url
-                    let dirHint = manager.cachedInfo(for: url)?.isDirectory
+                    let dirHint = manager.cachedInfo(for: url)?.isDirectory ?? false
                     let kind = await Task.detached(priority: .userInitiated) {
                         detectPreviewKind(for: u, isDirectoryHint: dirHint)
                     }.value

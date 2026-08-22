@@ -484,8 +484,9 @@ final class SSHConnection: @unchecked Sendable {
 
         var buf = [UInt8](repeating: 0, count: 262_144)
         while true {
-            let n = buf.withUnsafeMutableBytes { raw in
-                libssh2_sftp_read(handle, raw.baseAddress!.assumingMemoryBound(to: CChar.self), raw.count)
+            let n = buf.withUnsafeMutableBytes { raw -> Int in
+                guard let base = raw.baseAddress else { return -1 }
+                return libssh2_sftp_read(handle, base.assumingMemoryBound(to: CChar.self), raw.count)
             }
             if n == 0 { break }
             if n < 0 { throw sftpError("Download \(path)") }
@@ -523,8 +524,9 @@ final class SSHConnection: @unchecked Sendable {
             if n < 0 { throw SSHError.operationFailed("Upload", detail: "local read failed") }
             var offset = 0
             while offset < n {
-                let written = buf.withUnsafeBytes { raw in
-                    libssh2_sftp_write(handle, raw.baseAddress!.assumingMemoryBound(to: CChar.self) + offset, n - offset)
+                let written = buf.withUnsafeBytes { raw -> Int in
+                    guard let base = raw.baseAddress else { return -1 }
+                    return libssh2_sftp_write(handle, base.assumingMemoryBound(to: CChar.self) + offset, n - offset)
                 }
                 if written < 0 { throw sftpError("Upload \(path)") }
                 offset += written
@@ -596,6 +598,8 @@ final class SSHConnection: @unchecked Sendable {
 
     private static func string(_ buf: [CChar], length: Int32) -> String {
         let bytes = buf.prefix(Int(length)).map { UInt8(bitPattern: $0) }
+        // Lossy on purpose: a server sending a non-UTF-8 name should still yield a usable string.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: bytes, as: UTF8.self)
     }
 }

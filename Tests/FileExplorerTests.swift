@@ -1,4 +1,5 @@
-// swiftlint:disable file_length
+// URL literals in tests are compile-time known; a nil there is a test failure, which is the point.
+// swiftlint:disable file_length force_unwrapping
 import Testing
 import Foundation
 @testable import FileExplorer
@@ -1738,9 +1739,12 @@ struct HammerRunnerTests {
     static func loginShellHasHammer() -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-ilc", "command -v hammer"]
+        // `+m` matches makeHammerProcess: without it this interactive shell stops in
+        // tcsetpgrp (SIGTTOU) and `swift test` hangs here forever when run from a terminal.
+        process.arguments = ["+m", "-ilc", "command -v hammer"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
 
         do {
             try process.run()
@@ -1753,7 +1757,7 @@ struct HammerRunnerTests {
 
     /// An interactive shell with no tty complains on its way up; none of that belongs in the
     /// pane. Only a real run exercises the marker that separates start-up from task output.
-    @Test("keeps shell start-up noise out of task output", .enabled(if: HammerRunnerTests.loginShellHasHammer()))
+    @Test("keeps shell start-up noise out of task output", .enabled(if: Self.loginShellHasHammer()))
     @MainActor func suppressesStartupNoise() async throws {
         let runner = HammerTaskRunner()
         let task = HammerTask(path: "h:version", name: "h:version", desc: "")
@@ -1802,3 +1806,5 @@ struct LineStreamDecoderTests {
         #expect(decoder.lines(from: Data("50%\r100%\n".utf8)) == ["100%"])
     }
 }
+
+// swiftlint:enable force_unwrapping

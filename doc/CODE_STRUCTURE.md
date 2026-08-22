@@ -72,8 +72,19 @@ The **central @MainActor ObservableObject**. Owns all navigation, file listing, 
 - `history: [URL]`, `historyIndex: Int` -- back/forward navigation
 - `selectionMemory: [String: URL]` -- remembers selected item per directory path
 
+The class body itself keeps only stored state, `init`/`deinit`, navigation/history, sidebar and right-pane cursors, directory monitoring, keyboard nav and the `SelectionManager` bridge.
+Everything else lives in extension files next to it (Swift allows methods, computed properties and *static* stored properties in an extension -- only instance stored properties must stay in the class).
+
+### FileExplorerManagerLoading (extension, `Models/FileExplorerManagerLoading.swift`)
+The directory listing pipeline: `loadContents(completion:)` / `loadContents(selecting:)`, `applyLoadResult`, and the `nonisolated` pure helpers `buildListing` / `sortItems` that run the hidden-file policy, dir/file split and sort off the main actor.
+Also the "Folder sizes for Size sort" block -- `refreshDirectorySizesIfSortingBySize()`, `applyDirectorySizes()`, `recursiveFolderSize()` -- which fills real recursive sizes in asynchronously via `FolderSizeCache` and re-sorts.
+`loadGeneration` stays in the class body (stored) and is internal so this extension can bump/compare it to discard stale async loads.
+
+### FileExplorerManagerOpen (extension, `Models/FileExplorerManagerOpen.swift`)
+Opening items and archives: `cachedInfo(for:)`, `openItem()`, `openRemoteFile()`, `openFileWithPreferredApp()`, `extractArchive()`, `topLevelArchiveEntries()`, `decompressSingleFile()`.
+
 ### FileExplorerManagerFileOps (extension, `Models/FileExplorerManagerFileOps.swift`)
-File operation methods: `createNewFolder()`, `createNewFile()`, `duplicateFile()`, `addToZip()`, `extractArchive()`, `enableUnsafeApp()`, `moveToTrash()`, `refresh()`, `startRename()`, `cancelRename()`, `confirmRename()`, `toggleHidden()`.
+File operation methods: `createNewFolder()`, `createNewFile()`, `duplicateFile()`, `addToZip()`, `enableUnsafeApp()`, `moveToTrash()`, `refresh()`, `startRename()`, `cancelRename()`, `confirmRename()`, `toggleHidden()`.
 
 ### FileExplorerManagerSearch (extension, `Models/FileExplorerManagerSearch.swift`)
 Search methods: `startSearch()`, `startSearch(withQuery:)`, `cancelSearch()`, `performSearch()`, `toggleSearchExtension()`, `rescanSearchIndexIfActive()`. Entry points are gated on the source's `.recursiveSearch` capability (remote backends get a toast instead of an empty pane). List cursor navigation: `listSelectNext()`, `listSelectPrevious()`, `listActivateItem()`.
@@ -219,6 +230,8 @@ app/
       SSHFileSource.swift            -- SFTP backend (ssh:// browsing)
       SSHConnection.swift            -- libssh2 socket/session/auth, sync SFTP ops
     FileExplorerManager.swift        -- Central state manager
+    FileExplorerManagerLoading.swift  -- Directory listing, sorting, folder sizes
+    FileExplorerManagerOpen.swift     -- Open item, archive extract/decompress
     FileExplorerManagerFileOps.swift  -- File operations extension
     FileExplorerManagerSearch.swift   -- Search & list cursor extension
     FileItem.swift                   -- FileItem, SelectionManager, uniqueLocalDestination helper

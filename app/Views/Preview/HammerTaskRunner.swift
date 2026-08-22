@@ -35,10 +35,15 @@ private let hammerReadyMarker = "__file_explorer_hammer_ready__"
 /// that PATH is set up in `.zshrc` rather than `.zprofile`, so this needs the full
 /// interactive login shell. The argument is passed positionally so nothing needs quoting.
 /// Same approach as `runCodexApp` in SharedComponents.
+///
+/// `+m` turns job control off. Without it an interactive zsh calls `tcsetpgrp` on the
+/// controlling terminal during start-up; when the spawning process is not the terminal's
+/// foreground process group the shell takes SIGTTOU and stops before it runs anything.
+/// The app has no terminal so it never hit this, but `swift test` from a shell does.
 private func makeHammerProcess(task: String, directory: URL) -> Process {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    process.arguments = ["-ilc", "print -u2 -r -- '\(hammerReadyMarker)'; hammer \"$1\"", "hammer", task]
+    process.arguments = ["+m", "-ilc", "print -u2 -r -- '\(hammerReadyMarker)'; hammer \"$1\"", "hammer", task]
     process.currentDirectoryURL = directory
 
     var env = ProcessInfo.processInfo.environment

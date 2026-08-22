@@ -22,7 +22,7 @@ final class SSHFileSource: FileSystemSource, Sendable {
         components.user = spec.user
         components.port = spec.port
         components.path = "/"
-        self.rootURL = components.url ?? URL(string: "ssh://\(spec.host)/")!
+        self.rootURL = components.url ?? URL(fileURLWithPath: "/")
     }
 
     /// Establishes the connection and swaps a bare/root URL for the remote

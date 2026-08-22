@@ -76,7 +76,7 @@ struct JSONPreviewView: View {
         Task { await applyFormat() }
     }
 
-    private nonisolated static func formatJSON(_ text: String) -> String {
+    nonisolated private static func formatJSON(_ text: String) -> String {
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data),
               let formatted = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),

@@ -233,9 +233,13 @@ func readFileText(_ url: URL, maxBytes: Int? = nil) async -> String? {
             guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
             defer { try? handle.close() }
             let data = (try? handle.read(upToCount: maxBytes)) ?? Data()
+            // Lossy on purpose: a byte-count cut lands mid-character often enough that a
+            // failable decode would reject perfectly good text files.
+            // swiftlint:disable:next optional_data_string_conversion
             return String(decoding: data, as: UTF8.self)
         }
         guard let data = try? Data(contentsOf: url) else { return nil }
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self)
     }.value
 }

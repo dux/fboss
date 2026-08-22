@@ -24,16 +24,16 @@ struct SourceEntry: Sendable {
 struct SourceCapabilities: OptionSet, Sendable {
     let rawValue: Int
 
-    static let write           = SourceCapabilities(rawValue: 1 << 0)  // mkdir / createFile / upload
-    static let rename          = SourceCapabilities(rawValue: 1 << 1)
-    static let delete          = SourceCapabilities(rawValue: 1 << 2)
-    static let trash           = SourceCapabilities(rawValue: 1 << 3)  // delete moves to trash (vs permanent)
-    static let serverSideCopy  = SourceCapabilities(rawValue: 1 << 4)
-    static let watch           = SourceCapabilities(rawValue: 1 << 5)  // change stream for auto-reload
-    static let recursiveSearch = SourceCapabilities(rawValue: 1 << 6)  // deep index scan
-    static let hiddenToggle    = SourceCapabilities(rawValue: 1 << 7)
-    static let openWith        = SourceCapabilities(rawValue: 1 << 8)  // NSWorkspace / archive tools
-    static let localURLs       = SourceCapabilities(rawValue: 1 << 9)  // entries are real file:// URLs
+    static let write           = Self(rawValue: 1 << 0)  // mkdir / createFile / upload
+    static let rename          = Self(rawValue: 1 << 1)
+    static let delete          = Self(rawValue: 1 << 2)
+    static let trash           = Self(rawValue: 1 << 3)  // delete moves to trash (vs permanent)
+    static let serverSideCopy  = Self(rawValue: 1 << 4)
+    static let watch           = Self(rawValue: 1 << 5)  // change stream for auto-reload
+    static let recursiveSearch = Self(rawValue: 1 << 6)  // deep index scan
+    static let hiddenToggle    = Self(rawValue: 1 << 7)
+    static let openWith        = Self(rawValue: 1 << 8)  // NSWorkspace / archive tools
+    static let localURLs       = Self(rawValue: 1 << 9)  // entries are real file:// URLs
 }
 
 /// Sync existence probe result. Sources that cannot answer without a round

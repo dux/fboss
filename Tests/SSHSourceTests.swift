@@ -1,3 +1,5 @@
+// URL literals in tests are compile-time known; a nil there is a test failure, which is the point.
+// swiftlint:disable force_unwrapping
 import Testing
 import Foundation
 @testable import FileExplorer
@@ -114,3 +116,5 @@ struct MountsManagerURLTests {
         #expect(a == b)
     }
 }
+
+// swiftlint:enable force_unwrapping

@@ -16,7 +16,7 @@ final class iPhoneFileSource: FileSystemSource {
 
     init(udid: String, deviceName: String) {
         self.udid = udid
-        self.rootURL = URL(string: "iphone://\(udid)/")!
+        self.rootURL = URL(string: "iphone://\(udid)/") ?? URL(fileURLWithPath: "/")
         self.state = OSAllocatedUnfairLock(initialState: (deviceName: deviceName, appNames: [:]))
     }
 
@@ -468,7 +468,7 @@ final class iPhoneFileSource: FileSystemSource {
                 if a.isDirectory != b.isDirectory { return a.isDirectory }
                 return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
             }
-        } ?? nil
+        }
     }
 
     /// Single-path stat; nil if the path doesn't exist or the connection failed.
@@ -504,7 +504,7 @@ final class iPhoneFileSource: FileSystemSource {
                 size: size,
                 modifiedDate: modDate
             )
-        } ?? nil
+        }
     }
 
     /// Streamed file download. Extracted from downloadFileFromContext.

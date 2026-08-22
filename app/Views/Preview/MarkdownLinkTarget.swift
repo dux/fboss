@@ -25,7 +25,7 @@ enum MarkdownLinkTarget: Equatable {
     /// Nothing on disk at this path.
     case missing(String)
 
-    static func resolve(_ url: URL) -> MarkdownLinkTarget {
+    static func resolve(_ url: URL) -> Self {
         guard url.isFileURL else { return .external(url) }
 
         let fragment = url.fragment
@@ -43,7 +43,7 @@ enum MarkdownLinkTarget: Equatable {
         return .missing(path)
     }
 
-    private static func classify(_ path: String, fragment: String?) -> MarkdownLinkTarget? {
+    private static func classify(_ path: String, fragment: String?) -> Self? {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
 

@@ -67,6 +67,8 @@ struct TextPreviewView: View {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         let data = (try? handle.read(upToCount: displayBytes)) ?? Data()
+        // Lossy on purpose: the read is cut at a byte count, so the tail can be half a character.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self)
     }
 }
