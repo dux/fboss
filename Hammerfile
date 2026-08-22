@@ -8,6 +8,11 @@ INSTALL_DIR ||= '/Applications'
 BUILD_CFG   ||= 'debug'
 RES_BUNDLE  ||= "#{BINARY_NAME}_#{BINARY_NAME}.bundle"
 
+# Release ops need push rights on the repo. `git push` goes over ssh as dux, but
+# `gh` uses whichever account is active - and a read-only one fails the release
+# after the commit has already gone out. gh_pub switches to this user and back.
+RELEASE_GH_USER ||= 'dux'
+
 task :clean do
   desc 'Remove build artifacts'
   proc do
@@ -83,17 +88,35 @@ task :gh_pub do
     sh %(sed -i '' "s|/main/install.sh.*|/main/install.sh?v=#{hash} \\| bash|" README.md)
     sh 'git add -A && git commit -m "release" --allow-empty && git push origin main'
 
-    say 'deleting old releases', :cyan
-    `gh release list --json tagName -q '.[].tagName'`.lines.map(&:strip).reject(&:empty?).each do |tag|
-      `gh release delete "#{tag}" --yes --cleanup-tag 2>/dev/null`
+    gh_user = `gh api user -q .login 2>/dev/null`.strip
+    if gh_user != RELEASE_GH_USER
+      say "switching gh account #{gh_user} -> #{RELEASE_GH_USER} for the release", :cyan
+      sh "gh auth switch -u #{RELEASE_GH_USER}"
     end
 
-    say 'publishing latest release', :cyan
-    tarball = "#{APP_NAME}.app.tar.gz"
-    sh "tar -czf #{tarball} -C #{INSTALL_DIR} #{BUNDLE_DIR}"
-    sh %(gh release create latest #{tarball} --title "#{APP_NAME}" --notes "Latest build" --latest)
-    sh "rm -f #{tarball}"
-    say.green 'published'
+    # under ./tmp (gitignored) so a failed run can never leave an artifact for
+    # the next `git add -A` to sweep into the repo
+    tarball = "tmp/#{APP_NAME}.app.tar.gz"
+
+    begin
+      say 'deleting old releases', :cyan
+      `gh release list --json tagName -q '.[].tagName'`.lines.map(&:strip).reject(&:empty?).each do |tag|
+        out = `gh release delete "#{tag}" --yes --cleanup-tag 2>&1`
+        say.red "could not delete release #{tag}: #{out.strip}" unless $?.success?
+      end
+
+      say 'publishing latest release', :cyan
+      sh 'mkdir -p tmp'
+      sh "tar -czf #{tarball} -C #{INSTALL_DIR} #{BUNDLE_DIR}"
+      sh %(gh release create latest #{tarball} --title "#{APP_NAME}" --notes "Latest build" --latest)
+      say.green 'published'
+    ensure
+      sh "rm -f #{tarball}"
+      if !gh_user.empty? && gh_user != RELEASE_GH_USER
+        say "restoring gh account #{gh_user}", :cyan
+        sh "gh auth switch -u #{gh_user}"
+      end
+    end
   end
 end
 
