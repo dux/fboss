@@ -82,11 +82,18 @@ task :gh_pub do
   desc 'Build release, tag and publish latest to GitHub'
   proc do
     hammer :build
+
+    # Commit the build first, then stamp the README with the hash it produced. A
+    # commit cannot carry its own sha, so stamping beforehand left the install
+    # URL pointing one release behind. The ?v= is only a cache-buster for the raw
+    # githubusercontent copy of install.sh, which always pulls releases/latest.
+    sh 'git add -A && git commit -m "release" --allow-empty'
     hash = `git rev-parse --short HEAD`.strip
     say "publishing release #{hash}", :cyan
 
     sh %(sed -i '' "s|/main/install.sh.*|/main/install.sh?v=#{hash} \\| bash|" README.md)
-    sh 'git add -A && git commit -m "release" --allow-empty && git push origin main'
+    sh %(git diff --quiet README.md || git commit README.md -m "release: install url -> #{hash}")
+    sh 'git push origin main'
 
     gh_user = `gh api user -q .login 2>/dev/null`.strip
     if gh_user != RELEASE_GH_USER
