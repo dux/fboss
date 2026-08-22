@@ -24,61 +24,59 @@
 </script>
 
 <style>
-  :fez {
-    display: block;
+  display: block;
+  height: 100%;
+
+  .card {
     height: 100%;
+    box-sizing: border-box;
+    padding: 26px;
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid #eceef1;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 
-    .card {
-      height: 100%;
-      box-sizing: border-box;
-      padding: 26px;
-      border-radius: 16px;
-      background: #fff;
-      border: 1px solid #eceef1;
-      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
-      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-
-      &:hover {
-        transform: translateY(-4px);
-        border-color: rgba(var(--glow), 0.35);
-        box-shadow: 0 16px 34px rgba(var(--glow), 0.16);
-      }
-
-      &:hover .icon-tile {
-        transform: scale(1.06) rotate(-3deg);
-      }
+    &:hover {
+      transform: translateY(-4px);
+      border-color: rgba(var(--glow), 0.35);
+      box-shadow: 0 16px 34px rgba(var(--glow), 0.16);
     }
 
-    .icon-tile {
-      width: 52px;
-      height: 52px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 18px;
-      box-shadow: 0 6px 16px rgba(var(--glow), 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
-      transition: transform 0.25s ease;
+    &:hover .icon-tile {
+      transform: scale(1.06) rotate(-3deg);
     }
+  }
 
-    .icon {
-      font-size: 26px;
-      line-height: 1;
-    }
+  .icon-tile {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+    box-shadow: 0 6px 16px rgba(var(--glow), 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    transition: transform 0.25s ease;
+  }
 
-    h3 {
-      margin: 0 0 8px;
-      font-size: 16px;
-      font-weight: 700;
-      color: #0f172a;
-    }
+  .icon {
+    font-size: 26px;
+    line-height: 1;
+  }
 
-    p {
-      margin: 0;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #64748b;
-    }
+  h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #64748b;
   }
 </style>
 
