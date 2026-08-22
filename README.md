@@ -7,7 +7,7 @@ Native macOS Finder replacement built with Swift and SwiftUI. Fast, keyboard-dri
 ## Install
 
 ```
-curl -fsSL https://raw.githubusercontent.com/dux/file_explorer_swift/main/install.sh?v=17d1e5d | bash
+curl -fsSL https://raw.githubusercontent.com/dux/file_explorer_swift/main/install.sh?v=ce4fa3a | bash
 ```
 
 ![PLain](web-demo/assets/plain.png)
