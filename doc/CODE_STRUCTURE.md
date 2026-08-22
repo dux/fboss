@@ -47,6 +47,7 @@ The **central @MainActor ObservableObject**. Owns all navigation, file listing, 
 - `directories: [CachedFileInfo]`, `files: [CachedFileInfo]` -- cached contents of current dir
 - `allItems: [CachedFileInfo]` -- computed `directories + files`
 - `selectedItem: URL?`, `selectedIndex: Int` -- single item cursor
+- `previewStack`, `previewForwardStack: [PreviewTarget]` -- files reached by clicking links inside a preview; `previewURL` is what the right pane actually renders
 - `sortMode: SortMode` (.type, .name, .modified, .size) -- triggers `loadContents()` on change; in Size mode local folder sizes are filled in asynchronously via `FolderSizeCache`
 - `currentPane: MainPaneType` -- `.browser`, `.selection`, `.colorTag(TagColor)`
 - `browserViewMode: BrowserViewMode` -- `.files`, `.selected`
@@ -169,9 +170,24 @@ Both views accept `.fileURL` drops -- copies files to current directory with nam
 ## Preview System
 
 `PreviewType.detect(for:)` classifies by extension/filename:
-- `.image`, `.pdf`, `.text`, `.json`, `.markdown`, `.fez`, `.audio`, `.video`, `.archive`, `.comic`, `.epub`, `.dmg`, `.makefile`, `.packageJson`, `.none`
+- `.image`, `.pdf`, `.text`, `.json`, `.markdown`, `.fez`, `.audio`, `.video`, `.archive`, `.comic`, `.epub`, `.dmg`, `.makefile`, `.hammerfile`, `.packageJson`, `.none`
 
-Preview views in `Views/Preview/`: TextPreviewView, SyntaxHighlightView, HTMLPreviewView, JSONPreviewView, MarkdownPreviewView, ImagePreviewView, PDFPreviewView, AudioPreviewView, ArchivePreviewView, ComicPreviewView, EpubPreviewView, DMGPreviewView, MakefilePreviewView, PackageJsonPreviewView, MoviePreviewView, FolderGalleryPreview. (`.video` currently has no preview.)
+Preview views in `Views/Preview/`: TextPreviewView, SyntaxHighlightView, HTMLPreviewView, JSONPreviewView, MarkdownPreviewView, ImagePreviewView, PDFPreviewView, AudioPreviewView, ArchivePreviewView, ComicPreviewView, EpubPreviewView, DMGPreviewView, MakefilePreviewView, HammerfilePreviewView, PackageJsonPreviewView, MoviePreviewView, FolderGalleryPreview. (`.video` currently has no preview.)
+
+### Hammerfile task runner
+The Hammerfile preview is interactive: `HammerTaskLoader` shells out to `hammer h:json` for the task list (namespaces included, hidden tasks dropped), falling back to a `task :name` / `desc '...'` scan of the file when hammer isn't installed. Clicking a task runs it through `HammerTaskRunner` in the Hammerfile's directory, streaming output into the pane.
+
+`hammer` is a Ruby script in `~/bin`, which a GUI app's PATH doesn't have, so every invocation goes through `/bin/zsh -ilc` with the task passed positionally -- the same trick `runCodexApp` uses in SharedComponents. Output arrives via `readabilityHandler` and passes through `LineStreamDecoder`, which holds back partial lines so UTF-8 sequences split across chunks rejoin and ANSI escapes can be stripped from whole lines. One task runs at a time; switching files or closing the pane terminates it.
+
+Note there is no JS bridge involved. `HTMLPreviewView` renders static pages only -- the sole HTML-to-app channels anywhere in the app are the plain-string `WKScriptMessageHandler` in MarkdownPreviewView and link interception in `decidePolicyFor`. Every interactive preview is native SwiftUI.
+
+### Preview link following
+Relative links inside a markdown preview open in the preview pane itself, leaving the browser panes untouched.
+`MarkdownWebView` loads with the markdown file as its `baseURL`, so WebKit hands its navigation delegate already-absolute URLs; `MarkdownLinkTarget.resolve(_:)` classifies them as external / file / directory / missing (retrying after a trailing `:14` line suffix only when the literal path misses).
+
+`FileExplorerManager` owns the resulting `previewStack` / `previewForwardStack` of `PreviewTarget` (url + optional heading anchor). The right pane renders `previewURL` (`previewStack.last ?? selectedItem`) and shows `PreviewFollowBar` while the stack is non-empty; the `.id()` on the preview subtree stays keyed on `selectedItem` so following a link updates the pane instead of rebuilding it. A `didSet` on `selectedItem` clears the stack whenever the cursor moves, which also covers `applyLoadResult` dropping the cursor on a watcher reload.
+
+Following works for any previewable type, since the stack sits above `PreviewPane`'s type dispatch. Directory links are the one case that moves the browser (`navigateToFolder`). Remote previews pass `manager: nil` (hence `baseURL: nil`), disabling following, because a materialized cache copy has no siblings on disk. Same-document `#anchor` links are handled entirely in JS against generated GitHub-style heading slugs, and relative `<img>` sources are rewritten to `previewfile://` so they survive WebKit's subresource restrictions.
 
 ## Key Patterns
 
@@ -251,7 +267,8 @@ app/
       MainPane.swift                 -- Pane switcher
       FileBrowserPane.swift          -- File browser with search
     Preview/
-      PreviewPane.swift              -- Preview type detection & dispatch
+      PreviewPane.swift              -- Preview type detection & dispatch, PreviewFollowBar
+      MarkdownLinkTarget.swift       -- Resolves links clicked in a markdown preview
       TextPreviewView.swift          -- Plain text
       SyntaxHighlightView.swift      -- Syntax highlighting (bundled highlight.js)
       HTMLPreviewView.swift          -- Shared static-HTML webview
@@ -266,6 +283,8 @@ app/
       EpubPreviewView.swift          -- EPUB reader
       DMGPreviewView.swift           -- DMG info
       MakefilePreviewView.swift      -- Makefile targets
+      HammerfilePreviewView.swift    -- Hammerfile task runner UI
+      HammerTaskRunner.swift         -- hammer task discovery + streaming execution
       PackageJsonPreviewView.swift   -- package.json info
       MoviePreviewView.swift         -- Movie info from OMDB
 ```

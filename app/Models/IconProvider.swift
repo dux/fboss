@@ -235,6 +235,7 @@ final class IconProvider {
         "gemfile": "ruby",
         "gemfile.lock": "ruby",
         "rakefile": "ruby",
+        "hammerfile": "ruby",
         "cargo.toml": "rust",
         "cargo.lock": "rust",
         "go.mod": "go-mod",

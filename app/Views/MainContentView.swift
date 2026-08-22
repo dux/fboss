@@ -109,10 +109,18 @@ struct MainContentView: View {
                                     .background(Color.white)
                             case .standard:
                                 Divider()
-                                PreviewPane(url: selected, manager: manager)
-                                    .id(selected)
-                                    .frame(maxHeight: .infinity)
-                                    .background(Color.white)
+                                // Keyed on the cursor, not on the followed URL, so clicking a
+                                // link inside a preview updates the pane instead of rebuilding it.
+                                VStack(spacing: 0) {
+                                    if manager.isFollowingPreview {
+                                        PreviewFollowBar(manager: manager)
+                                        Divider()
+                                    }
+                                    PreviewPane(url: manager.previewURL ?? selected, manager: manager)
+                                }
+                                .id(selected)
+                                .frame(maxHeight: .infinity)
+                                .background(Color.white)
                             case .none:
                                 Spacer()
                             }

@@ -343,6 +343,10 @@ class KeyCaptureView: NSView {
             manager.selectLast()
             return true
         case 53:
+            // Step back out of a followed preview link before touching the selection
+            if manager.previewBack() {
+                return true
+            }
             if manager.browserViewMode != .files {
                 manager.browserViewMode = .files
             } else if manager.selectedItem != nil {

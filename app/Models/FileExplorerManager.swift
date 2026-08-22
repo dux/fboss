@@ -50,7 +50,15 @@ class FileExplorerManager: ObservableObject {
     @Published var currentPath: URL
     @Published var directories: [CachedFileInfo] = []
     @Published var files: [CachedFileInfo] = []
-    @Published var selectedItem: URL?
+    @Published var selectedItem: URL? {
+        // Link following in the preview is an excursion scoped to the selected file.
+        // Moving the cursor ends it -- including applyLoadResult dropping the cursor
+        // when a watcher reload finds it gone.
+        didSet {
+            guard oldValue != selectedItem else { return }
+            clearPreviewStack()
+        }
+    }
     @Published var selectedIndex: Int = -1
     @Published var showHidden: Bool = false
     @Published var renamingItem: URL? = nil
@@ -703,6 +711,43 @@ class FileExplorerManager: ObservableObject {
     func selectItem(at index: Int, url: URL) {
         selectedIndex = index
         selectedItem = url
+    }
+
+    // MARK: - Preview Link Following
+
+    /// Files reached by clicking relative links inside a preview. The right pane renders
+    /// the top of this stack; everything else in the app keeps using `selectedItem`, so
+    /// following a link never moves the browser.
+    @Published private(set) var previewStack: [PreviewTarget] = []
+    @Published private(set) var previewForwardStack: [PreviewTarget] = []
+
+    var previewTarget: PreviewTarget? { previewStack.last }
+    var previewURL: URL? { previewStack.last?.url ?? selectedItem }
+    var isFollowingPreview: Bool { !previewStack.isEmpty }
+
+    func followPreview(_ target: PreviewTarget) {
+        previewStack.append(target)
+        previewForwardStack.removeAll()
+    }
+
+    /// Steps back one link. Returns false when there is nothing to step back to, so
+    /// callers can fall through to their own Escape handling.
+    @discardableResult
+    func previewBack() -> Bool {
+        guard let current = previewStack.popLast() else { return false }
+        previewForwardStack.append(current)
+        return true
+    }
+
+    func previewGoForward() {
+        guard let next = previewForwardStack.popLast() else { return }
+        previewStack.append(next)
+    }
+
+    func clearPreviewStack() {
+        guard !previewStack.isEmpty || !previewForwardStack.isEmpty else { return }
+        previewStack.removeAll()
+        previewForwardStack.removeAll()
     }
 
     // MARK: - Keyboard Navigation

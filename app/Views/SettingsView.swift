@@ -301,6 +301,7 @@ struct HelpSettingsView: View {
 
                 helpSection("File Previews") {
                     helpText("Images, PDF, markdown, JSON, code (syntax highlighted), audio, video, archives, EPUB, comics, DMG, package.json, Makefile, movie folders (OMDB).")
+                    helpText("Hammerfile lists its tasks -- click one to run it in that folder and watch the output.")
                     helpText("Plain text detected automatically for extensionless files.")
                 }
 

@@ -9,6 +9,7 @@ enum PreviewType {
     case image
     case pdf
     case makefile
+    case hammerfile
     case archive
     case comic
     case epub
@@ -30,6 +31,10 @@ enum PreviewType {
         // Exact filename matches first
         if filename == "package.json" {
             return .packageJson
+        }
+
+        if filename == "hammerfile" {
+            return .hammerfile
         }
 
         // Check by extension first
@@ -155,6 +160,47 @@ struct PreviewPane: View {
     }
 }
 
+/// Shown above the preview while a link inside it has been followed. The browser panes
+/// are untouched, so this bar is the only way back to the file the cursor is on.
+struct PreviewFollowBar: View {
+    @ObservedObject var manager: FileExplorerManager
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: { manager.previewBack() }) {
+                Image(systemName: "chevron.left")
+            }
+            .buttonStyle(.plain)
+            .help("Back")
+
+            Button(action: { manager.previewGoForward() }) {
+                Image(systemName: "chevron.right")
+            }
+            .buttonStyle(.plain)
+            .disabled(manager.previewForwardStack.isEmpty)
+            .help("Forward")
+
+            Text(manager.previewURL?.lastPathComponent ?? "")
+                .textStyle(.small)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(manager.previewURL?.path ?? "")
+
+            Spacer()
+
+            Button(action: { manager.clearPreviewStack() }) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .help("Back to \(manager.selectedItem?.lastPathComponent ?? "selection")")
+        }
+        .textStyle(.small)
+        .foregroundColor(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+}
+
 /// Downloads a remote file to the source cache, then previews the local copy
 /// with the unchanged preview machinery. Skips files over the size cap.
 struct RemotePreviewPane: View {
@@ -168,7 +214,8 @@ struct RemotePreviewPane: View {
     var body: some View {
         Group {
             if let localURL {
-                LocalPreviewContent(url: localURL, manager: manager)
+                // The cached copy has no siblings on disk, so relative links can't resolve.
+                LocalPreviewContent(url: localURL, manager: manager, followsLinks: false)
             } else if failed {
                 NoPreviewView(url: url)
             } else {
@@ -200,13 +247,14 @@ struct RemotePreviewPane: View {
 private struct LocalPreviewContent: View {
     let url: URL
     var manager: FileExplorerManager?
+    var followsLinks: Bool = true
 
     var body: some View {
         let previewType = PreviewType.detect(for: url)
 
         switch previewType {
         case .markdown:
-            MarkdownPreviewView(url: url)
+            MarkdownPreviewView(url: url, manager: followsLinks ? manager : nil)
         case .json:
             JSONPreviewView(url: url)
         case .fez:
@@ -217,6 +265,8 @@ private struct LocalPreviewContent: View {
             PDFPreviewView(url: url)
         case .makefile:
             MakefilePreviewView(url: url)
+        case .hammerfile:
+            HammerfilePreviewView(url: url)
         case .archive:
             if let manager {
                 ArchivePreviewView(url: url, manager: manager)

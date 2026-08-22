@@ -1465,3 +1465,340 @@ struct ShortcutsManagerPinTests {
         #expect(mgr.customFolders[2].path == b.path)
     }
 }
+
+// MARK: - Markdown Link Following Tests
+
+@Suite("MarkdownLinkTarget")
+struct MarkdownLinkTargetTests {
+    /// Builds a throwaway tree: dir/, dir/sub/, dir/README.md, dir/sub/App.swift
+    private func makeTree() -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mdlink-\(UUID().uuidString)")
+        let sub = root.appendingPathComponent("sub")
+        try? FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: root.appendingPathComponent("README.md").path, contents: Data())
+        FileManager.default.createFile(atPath: sub.appendingPathComponent("App.swift").path, contents: Data())
+        return root
+    }
+
+    @Test("resolves a file to a preview target")
+    func resolvesFile() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let target = MarkdownLinkTarget.resolve(root.appendingPathComponent("README.md"))
+        #expect(target == .file(PreviewTarget(root.appendingPathComponent("README.md"))))
+    }
+
+    @Test("resolves a directory separately from a file")
+    func resolvesDirectory() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let target = MarkdownLinkTarget.resolve(root.appendingPathComponent("sub"))
+        #expect(target == .directory(root.appendingPathComponent("sub")))
+    }
+
+    @Test("carries the anchor fragment alongside the file")
+    func keepsFragment() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = URL(string: "file://\(root.path)/README.md#install")!
+        guard case .file(let target) = MarkdownLinkTarget.resolve(url) else {
+            Issue.record("expected a file target")
+            return
+        }
+        #expect(target.fragment == "install")
+        #expect(target.url.lastPathComponent == "README.md")
+    }
+
+    @Test("normalizes .. segments")
+    func normalizesParentSegments() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = root.appendingPathComponent("sub/../README.md")
+        #expect(MarkdownLinkTarget.resolve(url) == .file(PreviewTarget(root.appendingPathComponent("README.md"))))
+    }
+
+    @Test("handles percent-encoded spaces in names")
+    func decodesPercentEncoding() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        FileManager.default.createFile(atPath: root.appendingPathComponent("my notes.md").path, contents: Data())
+
+        let url = URL(string: "file://\(root.path)/my%20notes.md")!
+        #expect(MarkdownLinkTarget.resolve(url) == .file(PreviewTarget(root.appendingPathComponent("my notes.md"))))
+    }
+
+    @Test("strips editor-style line and column suffixes")
+    func stripsLineSuffix() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let swiftFile = root.appendingPathComponent("sub/App.swift")
+
+        #expect(MarkdownLinkTarget.resolve(root.appendingPathComponent("sub/App.swift:14")) == .file(PreviewTarget(swiftFile)))
+        #expect(MarkdownLinkTarget.resolve(root.appendingPathComponent("sub/App.swift:14:3")) == .file(PreviewTarget(swiftFile)))
+    }
+
+    @Test("a real file whose name ends in a colon suffix wins over stripping")
+    func literalPathBeatsStripping() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        FileManager.default.createFile(atPath: root.appendingPathComponent("notes.md:14").path, contents: Data())
+
+        let url = root.appendingPathComponent("notes.md:14")
+        #expect(MarkdownLinkTarget.resolve(url) == .file(PreviewTarget(url)))
+    }
+
+    @Test("web and mail links are external")
+    func externalSchemes() {
+        #expect(MarkdownLinkTarget.resolve(URL(string: "https://example.com")!) == .external(URL(string: "https://example.com")!))
+        #expect(MarkdownLinkTarget.resolve(URL(string: "mailto:a@b.c")!) == .external(URL(string: "mailto:a@b.c")!))
+    }
+
+    @Test("a path that is not on disk reports missing")
+    func missingPath() {
+        let root = makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = root.appendingPathComponent("nope.md")
+        #expect(MarkdownLinkTarget.resolve(url) == .missing(url.path))
+    }
+}
+
+@Suite("Preview follow stack")
+struct PreviewFollowStackTests {
+    @Test("following pushes onto the stack without touching the cursor")
+    @MainActor func followKeepsCursor() {
+        let mgr = FileExplorerManager()
+        let readme = URL(fileURLWithPath: "/tmp/README.md")
+        let other = URL(fileURLWithPath: "/tmp/OTHER.md")
+        mgr.selectedItem = readme
+
+        mgr.followPreview(PreviewTarget(other))
+
+        #expect(mgr.selectedItem == readme)
+        #expect(mgr.previewURL == other)
+        #expect(mgr.isFollowingPreview)
+    }
+
+    @Test("back walks the chain and forward re-enters it")
+    @MainActor func backAndForward() {
+        let mgr = FileExplorerManager()
+        let a = URL(fileURLWithPath: "/tmp/a.md")
+        let b = URL(fileURLWithPath: "/tmp/b.md")
+        mgr.selectedItem = URL(fileURLWithPath: "/tmp/root.md")
+
+        mgr.followPreview(PreviewTarget(a))
+        mgr.followPreview(PreviewTarget(b))
+        #expect(mgr.previewURL == b)
+
+        #expect(mgr.previewBack())
+        #expect(mgr.previewURL == a)
+        #expect(mgr.previewBack())
+        #expect(mgr.previewURL == mgr.selectedItem)
+
+        mgr.previewGoForward()
+        #expect(mgr.previewURL == a)
+    }
+
+    @Test("back reports false when nothing has been followed")
+    @MainActor func backOnEmptyStack() {
+        let mgr = FileExplorerManager()
+        #expect(mgr.previewBack() == false)
+    }
+
+    @Test("following a new link drops the forward stack")
+    @MainActor func followClearsForward() {
+        let mgr = FileExplorerManager()
+        mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/a.md")))
+        mgr.previewBack()
+        #expect(!mgr.previewForwardStack.isEmpty)
+
+        mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/c.md")))
+        #expect(mgr.previewForwardStack.isEmpty)
+    }
+
+    @Test("moving the browser cursor ends the excursion")
+    @MainActor func cursorChangeClearsStack() {
+        let mgr = FileExplorerManager()
+        mgr.selectedItem = URL(fileURLWithPath: "/tmp/root.md")
+        mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/a.md")))
+        mgr.previewBack()
+
+        mgr.selectedItem = URL(fileURLWithPath: "/tmp/elsewhere.md")
+
+        #expect(mgr.previewStack.isEmpty)
+        #expect(mgr.previewForwardStack.isEmpty)
+        #expect(mgr.previewURL == mgr.selectedItem)
+    }
+
+    @Test("the cursor being dropped on a reload also ends it")
+    @MainActor func nilCursorClearsStack() {
+        let mgr = FileExplorerManager()
+        mgr.selectedItem = URL(fileURLWithPath: "/tmp/root.md")
+        mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/a.md")))
+
+        mgr.selectedItem = nil
+
+        #expect(!mgr.isFollowingPreview)
+        #expect(mgr.previewURL == nil)
+    }
+}
+
+// MARK: - Hammerfile Tests
+
+@Suite("Hammerfile tasks")
+struct HammerTaskTests {
+    @Test("Hammerfile gets the runner preview, whatever the casing")
+    func detectsHammerfile() {
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/project/Hammerfile")) == .hammerfile)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/project/hammerfile")) == .hammerfile)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/project/Makefile")) == .makefile)
+    }
+
+    /// Trimmed shape of real `hammer h:json` output, banner line included -- a chatty shell
+    /// profile can print before hammer does, so the decoder has to skip to the first brace.
+    private static let sampleJSON = """
+    > hammer h:json
+    {
+      "schema": 1,
+      "hammer_version": "0.3.22",
+      "commands": {
+        "h": {
+          "h:version": {"name": "h:version", "path": "h:version", "desc": "Print version", "brief": "Print version", "hidden": false}
+        },
+        "__root": {
+          "build": {"name": "build", "path": "build", "desc": "Lint, test, build", "brief": "Lint, test, build", "hidden": false},
+          "clean": {"name": "clean", "path": "clean", "desc": "Remove build artifacts\\nsecond line", "brief": null, "hidden": false},
+          "secret": {"name": "secret", "path": "secret", "desc": "Internal", "brief": "Internal", "hidden": true}
+        }
+      }
+    }
+    """
+
+    @Test("decodes h:json, root tasks first, hidden ones dropped")
+    func decodesCLIDefinition() throws {
+        let data = Data(Self.sampleJSON.utf8)
+        let start = try #require(data.firstIndex(of: UInt8(ascii: "{")))
+        let groups = try #require(HammerTaskLoader.decode(Data(data[start...])))
+
+        #expect(groups.count == 2)
+        #expect(groups[0].namespace.isEmpty)
+        #expect(groups[1].namespace == "h")
+
+        #expect(groups[0].tasks.map(\.name) == ["build", "clean"])
+        #expect(groups[0].tasks[0].desc == "Lint, test, build")
+        // Multi-line descriptions are cut to what fits one row.
+        #expect(groups[0].tasks[1].desc == "Remove build artifacts")
+        #expect(groups[1].tasks[0].path == "h:version")
+    }
+
+    @Test("falls back to parsing the file when the CLI is unavailable")
+    func parsesSource() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let file = dir.appendingPathComponent("Hammerfile")
+        try """
+        APP_NAME ||= 'Demo'
+
+        task :lint do
+          desc 'Run SwiftLint'
+          proc { sh 'swiftlint' }
+        end
+
+        task :build do
+          desc "Build the app"
+          proc { sh 'swift build' }
+        end
+
+        task :bare do
+          proc { sh 'true' }
+        end
+        """.write(to: file, atomically: true, encoding: .utf8)
+
+        let groups = HammerTaskLoader.parseSource(file)
+        let tasks = try #require(groups.first).tasks
+
+        #expect(tasks.map(\.name) == ["lint", "build", "bare"])
+        #expect(tasks[0].desc == "Run SwiftLint")
+        #expect(tasks[1].desc == "Build the app")
+        #expect(tasks[2].desc.isEmpty)
+    }
+}
+
+@Suite("Hammer runner")
+struct HammerRunnerTests {
+    /// The same login-shell lookup the runner does, so this suite skips itself on machines
+    /// that don't have hammer installed.
+    static func loginShellHasHammer() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-ilc", "command -v hammer"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    /// An interactive shell with no tty complains on its way up; none of that belongs in the
+    /// pane. Only a real run exercises the marker that separates start-up from task output.
+    @Test("keeps shell start-up noise out of task output", .enabled(if: HammerRunnerTests.loginShellHasHammer()))
+    @MainActor func suppressesStartupNoise() async throws {
+        let runner = HammerTaskRunner()
+        let task = HammerTask(path: "h:version", name: "h:version", desc: "")
+        runner.run(task, in: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+
+        let deadline = Date().addingTimeInterval(60)
+        while runner.isRunning, Date() < deadline {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        #expect(!runner.isRunning)
+        #expect(runner.exitCode == 0)
+        #expect(!runner.output.isEmpty)
+        #expect(!runner.output.contains("can't change option"))
+        #expect(!runner.output.contains("__file_explorer_hammer_ready__"))
+    }
+}
+
+@Suite("Hammer output decoding")
+struct LineStreamDecoderTests {
+    @Test("emits only whole lines, holding the partial one back")
+    func buffersPartialLines() {
+        let decoder = LineStreamDecoder()
+
+        #expect(decoder.lines(from: Data("first\nsec".utf8)) == ["first"])
+        #expect(decoder.lines(from: Data("ond\n".utf8)) == ["second"])
+        #expect(decoder.drain(Data("no newline".utf8)) == ["no newline"])
+    }
+
+    @Test("a UTF-8 sequence split across chunks survives")
+    func rejoinsSplitCharacters() {
+        let decoder = LineStreamDecoder()
+        let bytes = Array("café\n".utf8)   // "é" is two bytes
+
+        // Cut between the two bytes of "é".
+        #expect(decoder.lines(from: Data(bytes[0..<4])).isEmpty)
+        #expect(decoder.lines(from: Data(bytes[4...])) == ["café"])
+    }
+
+    @Test("strips ANSI colours and honours carriage-return overwrites")
+    func cleansTerminalControls() {
+        let decoder = LineStreamDecoder()
+        let line = "\u{1B}[36mbuilding\u{1B}[0m\n"
+
+        #expect(decoder.lines(from: Data(line.utf8)) == ["building"])
+        #expect(decoder.lines(from: Data("50%\r100%\n".utf8)) == ["100%"])
+    }
+}
