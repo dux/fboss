@@ -181,9 +181,26 @@ Both views accept `.fileURL` drops -- copies files to current directory with nam
 ## Preview System
 
 `PreviewType.detect(for:)` classifies by extension/filename:
-- `.image`, `.pdf`, `.text`, `.json`, `.markdown`, `.fez`, `.audio`, `.video`, `.archive`, `.comic`, `.epub`, `.dmg`, `.makefile`, `.hammerfile`, `.packageJson`, `.none`
+- `.image`, `.pdf`, `.text`, `.json`, `.markdown`, `.fez`, `.audio`, `.video`, `.archive`, `.comic`, `.epub`, `.dmg`, `.pkg`, `.makefile`, `.hammerfile`, `.packageJson`, `.webloc`, `.none`
 
-Preview views in `Views/Preview/`: TextPreviewView, SyntaxHighlightView, HTMLPreviewView, JSONPreviewView, MarkdownPreviewView, ImagePreviewView, PDFPreviewView, AudioPreviewView, ArchivePreviewView, ComicPreviewView, EpubPreviewView, DMGPreviewView, MakefilePreviewView, HammerfilePreviewView, PackageJsonPreviewView, MoviePreviewView, FolderGalleryPreview. (`.video` currently has no preview.)
+Preview views in `Views/Preview/`: TextPreviewView, SyntaxHighlightView, HTMLPreviewView, JSONPreviewView, MarkdownPreviewView, ImagePreviewView, PDFPreviewView, AudioPreviewView, ArchivePreviewView, ComicPreviewView, EpubPreviewView, DMGPreviewView, PkgPreviewView, MakefilePreviewView, HammerfilePreviewView, PackageJsonPreviewView, WeblocPreviewView, MoviePreviewView, FolderGalleryPreview. (`.video` currently has no preview.)
+
+### Installer packages
+
+`PkgPreviewView` covers `.pkg`, `.mpkg` and `.xip`, with the reading split out into `PkgInfoLoader` the same way `HammerTaskRunner` sits beside `HammerfilePreviewView`.
+The view renders already-prepared values; every shell call and parser lives in the loader.
+
+A flat `.pkg` is a xar archive, so `xar -t` lists its members in constant time and individual members can be extracted on their own.
+The loader pulls out only `Distribution`, `PackageInfo` and `Bom` into a temp dir it deletes on the way out, and never touches `Payload` -- reading a 225 MB six-component package costs about 10 ms.
+`pkgutil --payload-files` is deliberately unused: it silently reports only the first component of a multi-component package (371 of 5638 files on the .NET SDK) and exits 0 while doing it, so payload paths come from `lsbom -p fMs` over each component's Bom instead.
+
+Three shapes of package all occur in the wild and the loader handles each: a distribution package with several components, a single-component flat package with no `Distribution` at all, and a payload-free package that installs by running scripts (no `Bom`, no `Payload`) which the pane reports rather than showing an empty file list.
+A `pkg-ref`'s id is a component identifier and is not always the xar member name, so refs are keyed by the `#member` body of the ref.
+`.mpkg` may be a directory bundle instead, read through `Contents/distribution.dist` and `Contents/Packages/`; a `.xip` keeps its payload in one compressed stream that cannot be listed without expanding it, so that pane shows identity and signature only.
+
+Signing comes from `pkgutil --check-signature`, which needs care: it writes `Could not open package:` to stderr, exits 1 for a legitimately unsigned package, and omits the `Notarization:` line entirely for Apple-signed packages -- hence `PkgNotarization.notStated` as distinct from `.untrusted`.
+Payloads reach 150k paths, so `PkgPayloadIndex` indexes entries by parent directory and the pane browses one directory at a time rather than laying out the whole listing.
+Install hands off to Installer.app (Archive Utility for `.xip`) via LaunchServices; the app is unprivileged, so it never runs `installer` itself.
 
 ### Hammerfile task runner
 The Hammerfile preview is interactive: `HammerTaskLoader` shells out to `hammer h:json` for the task list (namespaces included, hidden tasks dropped), falling back to a `task :name` / `desc '...'` scan of the file when hammer isn't installed. Clicking a task runs it through `HammerTaskRunner` in the Hammerfile's directory, streaming output into the pane.
@@ -295,6 +312,8 @@ app/
       ComicPreviewView.swift         -- Comic reader
       EpubPreviewView.swift          -- EPUB reader
       DMGPreviewView.swift           -- DMG info
+      PkgPreviewView.swift           -- Installer package info + payload browser
+      PkgInfoLoader.swift            -- pkg/mpkg/xip metadata reading and parsers
       MakefilePreviewView.swift      -- Makefile targets
       HammerfilePreviewView.swift    -- Hammerfile task runner UI
       HammerTaskRunner.swift         -- hammer task discovery + streaming execution

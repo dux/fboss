@@ -169,6 +169,9 @@ final class IconProvider {
         "mpkg": "package",
         "xip": "package",
 
+        // Internet locations
+        "webloc": "link",
+
         // Fonts
         "ttf": "font",
         "otf": "font",

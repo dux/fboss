@@ -2095,6 +2095,53 @@ struct PreviewTypeTests {
         #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/package.json")) == .packageJson)
     }
 
+    @Test("webloc internet locations get the link preview")
+    func detectsWebloc() {
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/site.webloc")) == .webloc)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/SITE.WEBLOC")) == .webloc)
+    }
+}
+
+// MARK: - WeblocPreviewView Tests
+
+@Suite("WeblocPreviewView")
+struct WeblocPreviewViewTests {
+    @Test("reads the link out of an XML plist")
+    func readsXMLPlist() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let file = dir.appendingPathComponent("planner.webloc")
+        let target = try #require(URL(string: "https://app.spaceplanner.co/"))
+        writeWeblocFiles(for: [target], in: dir)
+        let written = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        #expect(written.count == 1)
+        try FileManager.default.moveItem(at: try #require(written.first), to: file)
+
+        #expect(await WeblocPreviewView.readLink(from: file) == target)
+    }
+
+    @Test("reads a binary plist and rejects a file without a URL")
+    func readsBinaryAndRejectsMissing() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let binary = dir.appendingPathComponent("binary.webloc")
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: ["URL": "https://example.com/a?b=1"], format: .binary, options: 0)
+        try data.write(to: binary)
+        #expect(await WeblocPreviewView.readLink(from: binary) == URL(string: "https://example.com/a?b=1"))
+
+        let empty = dir.appendingPathComponent("empty.webloc")
+        try Data().write(to: empty)
+        #expect(await WeblocPreviewView.readLink(from: empty) == nil)
+
+        let noKey = dir.appendingPathComponent("nokey.webloc")
+        try PropertyListSerialization.data(fromPropertyList: ["Name": "x"], format: .xml, options: 0).write(to: noKey)
+        #expect(await WeblocPreviewView.readLink(from: noKey) == nil)
+    }
 }
 
 // swiftlint:enable force_unwrapping

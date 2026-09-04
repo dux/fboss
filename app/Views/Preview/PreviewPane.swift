@@ -16,7 +16,9 @@ enum PreviewType {
     case audio
     case video
     case dmg
+    case pkg
     case packageJson
+    case webloc
     case none
 
     // Audio file extensions - shared by detect() and the audio preview playlist
@@ -72,6 +74,14 @@ enum PreviewType {
 
         if ["dmg", "iso", "sparseimage", "sparsebundle"].contains(ext) {
             return .dmg
+        }
+
+        if FileExtensions.installerPackages.contains(ext) {
+            return .pkg
+        }
+
+        if ext == "webloc" {
+            return .webloc
         }
 
         // Audio files
@@ -283,8 +293,12 @@ private struct LocalPreviewContent: View {
             NoPreviewView(url: url)
         case .dmg:
             DMGPreviewView(url: url)
+        case .pkg:
+            PkgPreviewView(url: url)
         case .packageJson:
             PackageJsonPreviewView(url: url)
+        case .webloc:
+            WeblocPreviewView(url: url)
         case .text:
             TextPreviewView(url: url)
         case .none:

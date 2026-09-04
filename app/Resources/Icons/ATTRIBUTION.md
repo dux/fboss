@@ -10,3 +10,5 @@ Icon license: https://creativecommons.org/licenses/by-sa/4.0/
 
 The extracted vscode-icons SVG artwork is unmodified.
 Files are renamed locally to preserve the application's stable resource names.
+
+`link.svg` is drawn locally for `.webloc` internet locations and is not part of vscode-icons.
