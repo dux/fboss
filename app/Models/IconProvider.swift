@@ -164,6 +164,11 @@ final class IconProvider {
         "zst": "zip",
         "dmg": "zip",
 
+        // Installer packages
+        "pkg": "package",
+        "mpkg": "package",
+        "xip": "package",
+
         // Fonts
         "ttf": "font",
         "otf": "font",
@@ -281,8 +286,13 @@ final class IconProvider {
 
     static func resourceName(for url: URL, isDirectory: Bool) -> String? {
         if isDirectory {
-            guard url.pathExtension.lowercased() != "app" else {
+            let ext = url.pathExtension.lowercased()
+            guard ext != "app" else {
                 return nil
+            }
+            // A bundle .mpkg is a package, not a folder the user browses.
+            if FileExtensions.installerPackages.contains(ext) {
+                return "package"
             }
             return folderMap[url.lastPathComponent.lowercased()] ?? "_folder"
         }

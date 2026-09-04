@@ -1807,4 +1807,294 @@ struct LineStreamDecoderTests {
     }
 }
 
+// MARK: - Installer package tests
+
+/// Every fixture here is real output captured from a package on disk, so the parsers
+/// are tested against the shapes they actually meet rather than idealised ones.
+@Suite("PkgInfoLoader")
+struct PkgInfoLoaderTests {
+
+    // MARK: pkgutil --check-signature
+
+    @Test("reads authority and notarization from a Developer ID package")
+    func parsesDeveloperIDSignature() {
+        let output = """
+        Package "dotnet-sdk--10.0.400.pkg":
+           Status: signed by a developer certificate issued by Apple for distribution
+           Notarization: trusted by the Apple notary service
+           Signed with a trusted timestamp on: 2026-07-29 19:15:53 +0000
+           Certificate Chain:
+            1. Developer ID Installer: Microsoft Corporation (UBF8T346G9)
+               Expires: 2027-02-01 22:12:15 +0000
+               SHA256 Fingerprint:
+                   64 5D 86 D2 48
+               ------------------------------------------------------------------------
+            2. Developer ID Certification Authority
+            3. Apple Root CA
+        """
+        let signature = PkgInfoLoader.parseSignature(output)
+
+        #expect(signature.isSigned)
+        #expect(signature.notarization == .trusted)
+        #expect(signature.authority == "Developer ID Installer: Microsoft Corporation (UBF8T346G9)")
+        #expect(signature.timestamp == "2026-07-29 19:15:53 +0000")
+        #expect(!signature.unreadable)
+    }
+
+    @Test("an Apple-signed package has no notarization verdict at all")
+    func parsesAppleSignature() {
+        let output = """
+        Package "MobileDevice.pkg":
+           Status: signed Apple Software
+           Certificate Chain:
+            1. Software Update
+               Expires: 2029-04-14 21:28:23 +0000
+        """
+        let signature = PkgInfoLoader.parseSignature(output)
+
+        #expect(signature.isSigned)
+        // Absent line means "not applicable" - reporting false here would wrongly flag
+        // every Apple system package as un-notarized.
+        #expect(signature.notarization == .notStated)
+        #expect(signature.authority == "Software Update")
+    }
+
+    @Test("an unsigned package is recognised, not treated as an error")
+    func parsesUnsignedPackage() {
+        let signature = PkgInfoLoader.parseSignature("""
+        Package "Downloads":
+           Status: no signature
+        """)
+
+        #expect(!signature.isSigned)
+        #expect(!signature.unreadable)
+        #expect(signature.authority == nil)
+    }
+
+    @Test("an unopenable file is flagged unreadable")
+    func parsesUnreadablePackage() {
+        let signature = PkgInfoLoader.parseSignature("Could not open package: /etc/hosts")
+
+        #expect(signature.unreadable)
+        #expect(!signature.isSigned)
+    }
+
+    // MARK: PackageInfo
+
+    @Test("reads payload size and location from a component")
+    func parsesComponentPackageInfo() {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <pkg-info overwrite-permissions="true" relocatable="false" \
+        identifier="com.microsoft.dotnet.sharedhost.component.osx.arm64" version="10.0.11" \
+        format-version="2" install-location="/usr/local/share/dotnet" auth="root">
+            <payload numberOfFiles="4" installKBytes="216"/>
+        </pkg-info>
+        """
+        let info = PkgInfoLoader.parsePackageInfo(xml)
+
+        #expect(info?.identifier == "com.microsoft.dotnet.sharedhost.component.osx.arm64")
+        #expect(info?.version == "10.0.11")
+        #expect(info?.installLocation == "/usr/local/share/dotnet")
+        #expect(info?.installKBytes == 216)
+        #expect(info?.numberOfFiles == 4)
+        #expect(info?.requiresRoot == true)
+    }
+
+    @Test("a script-only package reports no payload and keeps its install location")
+    func parsesPayloadFreePackageInfo() {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <pkg-info overwrite-permissions="true" relocatable="false" identifier="com.gog.galaxy" \
+        postinstall-action="none" version="0" format-version="2" \
+        install-location="/Applications/" auth="root">
+            <bundle-version/>
+            <scripts><postinstall file="./postinstall"/></scripts>
+        </pkg-info>
+        """
+        let info = PkgInfoLoader.parsePackageInfo(xml)
+
+        #expect(info?.identifier == "com.gog.galaxy")
+        #expect(info?.installKBytes == 0)
+        #expect(info?.numberOfFiles == 0)
+        // The trailing slash is real; it must not survive into the UI.
+        #expect(info?.installLocation == "/Applications")
+    }
+
+    @Test("falls back to the volume-group location Apple components use")
+    func parsesAppleComponentPackageInfo() {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <pkg-info format-version="2" relocatable="true" identifier="com.apple.pkg.MobileDevice" \
+        system-volume-group-install-location="/Library/Apple/" auth="root" version="4.0.0.0.1.1772003596">
+          <payload installKBytes="36015" numberOfFiles="366"/>
+        </pkg-info>
+        """
+        let info = PkgInfoLoader.parsePackageInfo(xml)
+
+        #expect(info?.identifier == "com.apple.pkg.MobileDevice")
+        #expect(info?.installLocation == "/Library/Apple")
+        #expect(info?.installKBytes == 36015)
+    }
+
+    @Test("a missing install-location means the root")
+    func defaultsInstallLocationToRoot() {
+        #expect(PkgInfoLoader.normalizeLocation(nil) == "/")
+        #expect(PkgInfoLoader.normalizeLocation("") == "/")
+        #expect(PkgInfoLoader.normalizeLocation("/") == "/")
+        #expect(PkgInfoLoader.normalizeLocation("Library/Apple/") == "/Library/Apple")
+    }
+
+    // MARK: Distribution
+
+    @Test("keys refs by the archive member, which is not always the ref id")
+    func parsesDistributionMemberMapping() {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <installer-gui-script minSpecVersion="2">
+            <pkg-ref id="com.gog.galaxy"><bundle-version/></pkg-ref>
+            <title>GOG Galaxy</title>
+            <options rootVolumeOnly="true"/>
+            <allowed-os-versions><os-version min="14.0"/></allowed-os-versions>
+            <choice id="com.gog.galaxy" visible="false"><pkg-ref id="com.gog.galaxy"/></choice>
+            <pkg-ref id="com.gog.galaxy" version="0" installKBytes="0">#galaxyClientFirst.pkg</pkg-ref>
+        </installer-gui-script>
+        """
+        let distribution = PkgInfoLoader.parseDistribution(xml)
+
+        #expect(distribution?.title == "GOG Galaxy")
+        #expect(distribution?.minOSVersion == "14.0")
+        // The ref id is com.gog.galaxy but the xar member is galaxyClientFirst.pkg.
+        #expect(distribution?.refs["galaxyClientFirst.pkg"]?.id == "com.gog.galaxy")
+        #expect(distribution?.refs["com.gog.galaxy"] == nil)
+    }
+
+    @Test("collects per-component titles and sizes from a multi-component distribution")
+    func parsesMultiComponentDistribution() {
+        let xml = """
+        <?xml version="1.0" standalone="yes"?>
+        <installer-gui-script minSpecVersion="2">
+            <title>Microsoft .NET SDK 10.0.400 (arm64)</title>
+            <volume-check><allowed-os-versions><os-version min="12.0"/></allowed-os-versions></volume-check>
+            <choice id="dev.pkg" visible="true" title="Microsoft .NET SDK 10.0.400 (arm64)">
+                <pkg-ref id="dev.pkg"/>
+            </choice>
+            <choice id="host.pkg" visible="true" title="Microsoft .NET Host">
+                <pkg-ref id="host.pkg"/>
+            </choice>
+            <pkg-ref id="dev.pkg" packageIdentifier="com.microsoft.dotnet.dev" \
+        version="10.0.400" installKBytes="515998">#dev.pkg</pkg-ref>
+            <pkg-ref id="host.pkg" packageIdentifier="com.microsoft.dotnet.sharedhost" \
+        version="10.0.11" installKBytes="216">#host.pkg</pkg-ref>
+        </installer-gui-script>
+        """
+        let distribution = PkgInfoLoader.parseDistribution(xml)
+
+        #expect(distribution?.title == "Microsoft .NET SDK 10.0.400 (arm64)")
+        #expect(distribution?.minOSVersion == "12.0")
+        #expect(distribution?.refs.count == 2)
+        #expect(distribution?.refs["dev.pkg"]?.installKBytes == 515998)
+        #expect(distribution?.refs["dev.pkg"]?.packageIdentifier == "com.microsoft.dotnet.dev")
+        #expect(distribution?.title(forMember: "host.pkg") == "Microsoft .NET Host")
+    }
+
+    // MARK: lsbom
+
+    @Test("indexes payload paths by parent directory")
+    func parsesLsbomIntoDirectoryIndex() {
+        // `lsbom -p fMs`: path, symbolic mode, size - tab separated, size empty for dirs.
+        let output = [
+            ".\tdrwxr-xr-x \t",
+            "./Applications\tdrwxr-xr-x \t",
+            "./Applications/Foo.app\tdrwxr-xr-x \t",
+            "./Applications/Foo.app/Contents\tdrwxr-xr-x \t",
+            "./Applications/Foo.app/Contents/Info.plist\t-rw-r--r-- \t3291",
+            "./LICENSE.txt\t-rw-r--r-- \t1116"
+        ].joined(separator: "\n")
+
+        let index = PkgInfoLoader.parseLsbom(output)
+
+        // "." itself is the root marker, not an entry.
+        #expect(index.totalPaths == 5)
+        #expect(!index.truncated)
+
+        let root = index.entries(at: ".")
+        #expect(root.map(\.name) == ["Applications", "LICENSE.txt"])
+        #expect(root.first?.isDirectory == true)
+        #expect(root.last?.size == 1116)
+
+        let contents = index.entries(at: "./Applications/Foo.app/Contents")
+        #expect(contents.map(\.name) == ["Info.plist"])
+        #expect(contents.first?.size == 3291)
+    }
+
+    @Test("directories sort ahead of files")
+    func sortsPayloadDirectoriesFirst() {
+        let output = [
+            "./a.txt\t-rw-r--r-- \t10",
+            "./zeta\tdrwxr-xr-x \t",
+            "./b.txt\t-rw-r--r-- \t20"
+        ].joined(separator: "\n")
+
+        #expect(PkgInfoLoader.parseLsbom(output).entries(at: ".").map(\.name) == ["zeta", "a.txt", "b.txt"])
+    }
+
+    @Test("stops indexing at the limit and says so")
+    func truncatesOversizePayloads() {
+        let output = (0..<50).map { "./file\($0)\t-rw-r--r-- \t1" }.joined(separator: "\n")
+        let index = PkgInfoLoader.parseLsbom(output, limit: 10)
+
+        #expect(index.totalPaths == 10)
+        #expect(index.truncated)
+    }
+
+    // MARK: Receipts
+
+    @Test("reads an installed receipt plist")
+    func parsesReceipt() {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+            <key>install-location</key><string>Library/Caches</string>
+            <key>install-time</key><integer>1787119432</integer>
+            <key>pkg-version</key><string>26213.1006.5011</string>
+            <key>pkgid</key><string>com.microsoft.teams2</string>
+            <key>volume</key><string>/</string>
+        </dict></plist>
+        """
+        let receipt = PkgInfoLoader.parseReceipt(Data(plist.utf8))
+
+        #expect(receipt?.version == "26213.1006.5011")
+        #expect(receipt?.installDate == Date(timeIntervalSince1970: 1787119432))
+        #expect(receipt?.volume == "/")
+    }
+
+    @Test("no receipt output yields no receipt")
+    func rejectsMissingReceipt() {
+        #expect(PkgInfoLoader.parseReceipt(Data("No receipt for 'com.gog.galaxy' found at '/'.".utf8)) == nil)
+    }
+}
+
+// MARK: - PreviewType Tests
+
+@Suite("PreviewType")
+struct PreviewTypeTests {
+    @Test("installer packages get the package preview")
+    func detectsInstallerPackages() {
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/Foo.pkg")) == .pkg)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/Foo.mpkg")) == .pkg)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/Xcode.xip")) == .pkg)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/FOO.PKG")) == .pkg)
+    }
+
+    @Test("neighbouring container formats keep their own previews")
+    func doesNotStealOtherContainers() {
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/Foo.dmg")) == .dmg)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/Foo.zip")) == .archive)
+        #expect(PreviewType.detect(for: URL(fileURLWithPath: "/tmp/package.json")) == .packageJson)
+    }
+
+}
+
 // swiftlint:enable force_unwrapping

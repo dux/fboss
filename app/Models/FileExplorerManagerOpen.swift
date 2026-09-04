@@ -16,7 +16,12 @@ extension FileExplorerManager {
         let isDirectory = cachedInfo(for: item)?.isDirectory
             ?? (source.existsSync(item) == .directory)
 
-        if isDirectory {
+        // A bundle .mpkg is directory-shaped, but walking into its Contents/ is never what
+        // the user meant, so it opens as a file the way the flat form already does.
+        if isDirectory, item.isFileURL,
+           FileExtensions.installerPackages.contains(item.pathExtension.lowercased()) {
+            openFileWithPreferredApp(item)
+        } else if isDirectory {
             navigateTo(item)
         } else if source.capabilities.contains(.localURLs) {
             let ext = item.pathExtension.lowercased()

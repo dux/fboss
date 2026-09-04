@@ -116,6 +116,8 @@ enum FileExtensions {
         "gz", "bz2", "xz", "zst", "rar", "7z"
     ]
     static let office: Set<String> = ["docx", "xlsx", "pptx", "doc", "xls", "ppt"]
+    /// macOS installer packages. `.mpkg` may be a directory bundle rather than a file.
+    static let installerPackages: Set<String> = ["pkg", "mpkg", "xip"]
     static let comicImages: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"]
 
     static let previewable: Set<String> = {

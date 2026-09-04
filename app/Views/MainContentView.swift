@@ -20,6 +20,11 @@ func detectPreviewKind(for url: URL, isDirectoryHint: Bool = false) -> PreviewKi
     guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return .none }
 
     if isDir.boolValue {
+        // A bundle .mpkg is a directory whose Resources hold installer background art,
+        // so the gallery scan below would otherwise render it as an image grid.
+        if FileExtensions.installerPackages.contains(url.pathExtension.lowercased()) {
+            return .standard
+        }
         if MovieManager.detectMovie(folderName: url.lastPathComponent) != nil,
            MovieManager.hasVideoFile(in: url) {
             return .movie
