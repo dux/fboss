@@ -8,6 +8,7 @@ enum PreviewType {
     case fez
     case image
     case pdf
+    case spreadsheet
     case makefile
     case hammerfile
     case archive
@@ -58,6 +59,10 @@ enum PreviewType {
 
         if ext == "pdf" {
             return .pdf
+        }
+
+        if ["xlsx", "xls", "xlsm"].contains(ext) {
+            return .spreadsheet
         }
 
         if ["cbz", "cbr"].contains(ext) {
@@ -273,6 +278,8 @@ private struct LocalPreviewContent: View {
             ImagePreviewView(url: url)
         case .pdf:
             PDFPreviewView(url: url)
+        case .spreadsheet:
+            SpreadsheetPreviewView(url: url)
         case .makefile:
             MakefilePreviewView(url: url)
         case .hammerfile:
