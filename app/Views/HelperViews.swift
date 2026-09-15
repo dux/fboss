@@ -142,9 +142,27 @@ struct FileDetailsView: View {
         }
         .padding(20)
         .frame(width: 400, height: 350)
-        .onAppear {
-            cachedAttributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-            calculateSize()
+        .task(id: url) {
+            do {
+                let target = url
+                let (created, modified, permissions) = try await BlockingFileIO.run {
+                    let values = try FileManager.default.attributesOfItem(atPath: target.path)
+                    return (values[.creationDate] as? Date, values[.modificationDate] as? Date, values[.posixPermissions] as? Int)
+                }
+                cachedAttributes = [:]
+                cachedAttributes?[.creationDate] = created
+                cachedAttributes?[.modificationDate] = modified
+                cachedAttributes?[.posixPermissions] = permissions
+                let measurement = try await FolderSizeCalculator.measure(url)
+                try Task.checkCancellation()
+                fileSize = ByteCountFormatter.string(fromByteCount: measurement.bytes, countStyle: .file)
+                itemCount = isDirectory ? measurement.itemCount : nil
+            } catch is CancellationError {
+                return
+            } catch {
+                fileSize = "Unavailable"
+                ToastManager.shared.showError(error.localizedDescription)
+            }
         }
     }
 
@@ -154,12 +172,6 @@ struct FileDetailsView: View {
         return "\(ext.uppercased()) file"
     }
 
-    private func calculateSize() {
-        calculateFileSize(url: url, isDirectory: isDirectory) { sizeStr, count in
-            fileSize = sizeStr
-            itemCount = count
-        }
-    }
 }
 
 struct DetailRow: View {

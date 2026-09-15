@@ -46,7 +46,7 @@ struct TaggedFile: Identifiable {
 private typealias ColorTagStore = [String: [String]]
 
 @MainActor
-class ColorTagManager: ObservableObject {
+final class ColorTagManager: ObservableObject {
     static let shared = ColorTagManager()
 
     // Single source of truth: color -> ordered list of file paths
@@ -56,15 +56,16 @@ class ColorTagManager: ObservableObject {
 
     private let filePath: URL
     private let fm = FileManager.default
-    private var saveTask: Task<Void, Never>?
+    private let writer: DebouncedJSONWriter<ColorTagStore>
 
     // Public init for testing with custom path
     init(filePath: URL? = nil) {
         self.filePath = filePath ?? AppSettings.configBase.appendingPathComponent("color-labels.json")
-        load()
-        if filePath == nil {
-            migrateFromSymlinks()
+        writer = DebouncedJSONWriter(file: self.filePath) { error in
+            ToastManager.shared.showError("Could not save color tags: \(error.localizedDescription)")
         }
+        load()
+        if filePath == nil { migrateFromSymlinks() }
     }
 
     // MARK: - Unified Public API
@@ -151,31 +152,18 @@ class ColorTagManager: ObservableObject {
     }
 
     private func scheduleSave() {
-        saveTask?.cancel()
-        saveTask = Task.detached(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-            await self.save()
-        }
-    }
-
-    func save() {
         var json: ColorTagStore = [:]
         for color in TagColor.allCases {
-            if let paths = store[color], !paths.isEmpty {
-                json[color.rawValue] = paths
-            }
+            if let paths = store[color], !paths.isEmpty { json[color.rawValue] = paths }
         }
-        guard let data = try? JSONEncoder().encode(json) else { return }
-        try? data.write(to: filePath, options: .atomic)
+        writer.schedule(json)
     }
 
-    // MARK: - Migration from symlinks
+    func flush() async throws { try await writer.flush() }
 
     private func migrateFromSymlinks() {
         let colorsDir = AppSettings.configBase.appendingPathComponent("colors")
         guard fm.fileExists(atPath: colorsDir.path) else { return }
-
         var migrated = false
         for color in TagColor.allCases {
             let dir = colorsDir.appendingPathComponent(color.rawValue)
@@ -187,14 +175,19 @@ class ColorTagManager: ObservableObject {
                 migrated = true
             }
         }
-
         if migrated {
-            save()
-            try? fm.removeItem(at: colorsDir)
+            scheduleSave()
+            Task {
+                do {
+                    try await flush()
+                    try await BlockingFileIO.run { try FileManager.default.removeItem(at: colorsDir) }
+                } catch {
+                    ToastManager.shared.showError("Could not migrate color tags: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
-    // Helper for migration - add by path string directly
     private func add(_ path: String, color: TagColor) {
         if store[color] == nil { store[color] = [] }
         guard !(store[color]?.contains(path) ?? false) else { return }

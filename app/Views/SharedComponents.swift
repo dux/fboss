@@ -196,35 +196,6 @@ func formatDateShort(_ date: Date) -> String {
     sharedDateFormatter.string(from: date)
 }
 
-func calculateFileSize(url: URL, isDirectory: Bool, completion: @MainActor @escaping (String, Int?) -> Void) {
-    DispatchQueue.global(qos: .userInitiated).async {
-        if isDirectory {
-            var totalSize: UInt64 = 0
-            var count = 0
-            if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey], options: []) {
-                for case let fileURL as URL in enumerator {
-                    count += 1
-                    if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += UInt64(size)
-                    }
-                }
-            }
-            let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(totalSize), countStyle: .file)
-            DispatchQueue.main.async {
-                completion(sizeStr, count)
-            }
-        } else {
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-               let size = attrs[.size] as? UInt64 {
-                let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-                DispatchQueue.main.async {
-                    completion(sizeStr, nil)
-                }
-            }
-        }
-    }
-}
-
 /// Reads `url` as UTF-8 text off the main thread (lossy decoding). When `maxBytes`
 /// is set, reads at most that many bytes instead of the whole file - so previewing a
 /// huge file never blocks the UI or pulls it entirely into memory. Returns nil only

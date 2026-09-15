@@ -60,7 +60,7 @@ struct CachedFileInfoTests {
 
     @Test("allItems combines directories and files")
     @MainActor func allItemsCombined() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let dir = CachedFileInfo(url: URL(fileURLWithPath: "/tmp/a"), isDirectory: true, size: 0, modDate: nil, isHidden: false)
         let file = CachedFileInfo(url: URL(fileURLWithPath: "/tmp/b.txt"), isDirectory: false, size: 10, modDate: nil, isHidden: false)
         manager.directories = [dir]
@@ -271,7 +271,7 @@ struct FileItemTests {
 struct SelectionManagerTests {
     @Test("add and remove items")
     @MainActor func addRemove() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         let item = makeLocalItem("test.txt", path: "/tmp/test-sel.txt")
         sel.add(item)
@@ -284,7 +284,7 @@ struct SelectionManagerTests {
 
     @Test("clear removes all items")
     @MainActor func clearAll() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         sel.add(makeLocalItem("a", path: "/tmp/a"))
         sel.add(makeLocalItem("b", path: "/tmp/b"))
@@ -295,7 +295,7 @@ struct SelectionManagerTests {
 
     @Test("toggle adds then removes")
     @MainActor func toggle() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         let item = makeLocalItem("t", path: "/tmp/toggle-test")
         sel.toggle(item)
@@ -306,7 +306,7 @@ struct SelectionManagerTests {
 
     @Test("duplicate add does not increase count")
     @MainActor func duplicateAdd() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         let item = makeLocalItem("dup", path: "/tmp/dup-test")
         sel.add(item)
@@ -316,7 +316,7 @@ struct SelectionManagerTests {
 
     @Test("localItems filters correctly")
     @MainActor func localItemsFilter() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         sel.add(makeLocalItem("local", path: "/tmp/local"))
         sel.add(makeIPhoneItem("phone", path: "/phone/file"))
@@ -327,7 +327,7 @@ struct SelectionManagerTests {
 
     @Test("removeByPath removes matching item")
     @MainActor func removeByPath() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         sel.add(makeLocalItem("x", path: "/tmp/x"))
         sel.removeByPath("/tmp/x")
@@ -336,11 +336,11 @@ struct SelectionManagerTests {
 
     @Test("manager toggles listed remote files and folders in global selection")
     @MainActor func toggleListedRemoteItems() throws {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         defer { sel.clear() }
 
-        let manager = FileExplorerManager()
+        let manager = makeTestManager(selection: sel)
         let folderURL = try #require(URL(string: "ssh://user@example.com/var/log"))
         let fileURL = try #require(URL(string: "ssh://user@example.com/var/log/app.log"))
         manager.directories = [CachedFileInfo(
@@ -373,11 +373,11 @@ struct SelectionManagerTests {
 
     @Test("Space selection toggles the current remote folder")
     @MainActor func toggleCurrentRemoteFolder() throws {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         defer { sel.clear() }
 
-        let manager = FileExplorerManager()
+        let manager = makeTestManager(selection: sel)
         let url = try #require(URL(string: "ssh://user@example.com/var/log"))
         manager.currentPath = url
         manager.selectedItem = url
@@ -391,7 +391,7 @@ struct SelectionManagerTests {
 
     @Test("removing a local path preserves a remote item with the same path")
     @MainActor func removeLocalPathPreservesRemoteItem() throws {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         defer { sel.clear() }
 
@@ -422,7 +422,7 @@ struct SelectionManagerTests {
 struct NavigationTests {
     @Test("navigateTo changes currentPath")
     @MainActor func navigateToDirectory() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let target = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         manager.navigateTo(target)
         #expect(manager.currentPath.path == target.standardizedFileURL.path)
@@ -430,7 +430,7 @@ struct NavigationTests {
 
     @Test("navigateUp goes to parent")
     @MainActor func navigateUp() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let home = FileManager.default.homeDirectoryForCurrentUser
         let target = home.appendingPathComponent("Desktop")
         manager.navigateTo(target)
@@ -440,7 +440,7 @@ struct NavigationTests {
 
     @Test("clearSelection resets selected state")
     @MainActor func clearSelection() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         manager.selectedIndex = 5
         manager.selectedItem = URL(fileURLWithPath: "/tmp/test")
         manager.clearSelection()
@@ -450,7 +450,7 @@ struct NavigationTests {
 
     @Test("selectCurrentFolder selects the current path")
     @MainActor func selectCurrentFolder() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let target = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
         manager.navigateTo(target)
         manager.selectCurrentFolder()
@@ -460,7 +460,7 @@ struct NavigationTests {
 
     @Test("sidebar focus and unfocus")
     @MainActor func sidebarFocus() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         #expect(!manager.sidebarFocused)
         manager.focusSidebar()
         #expect(manager.sidebarFocused)
@@ -470,7 +470,7 @@ struct NavigationTests {
 
     @Test("right pane focus and unfocus")
     @MainActor func rightPaneFocus() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         #expect(!manager.rightPaneFocused)
         manager.focusRightPane()
         #expect(manager.rightPaneFocused)
@@ -500,46 +500,6 @@ struct ToastManagerTests {
         #expect(toast.message == "Error occurred")
         #expect(toast.isShowing)
         #expect(toast.style == .error)
-    }
-}
-
-// MARK: - FolderSizeCache Tests
-
-@Suite("FolderSizeCache")
-struct FolderSizeCacheTests {
-    @Test("cache returns nil for unknown path")
-    func unknownPath() {
-        let cache = FolderSizeCache.shared
-        let fake = URL(fileURLWithPath: "/tmp/nonexistent-folder-\(UUID().uuidString)")
-        #expect(cache.getCachedSize(for: fake) == nil)
-    }
-
-    @Test("set and get cached size for existing directory")
-    func setAndGet() {
-        let cache = FolderSizeCache.shared
-        // Use a unique temp dir so no stale cache entries interfere
-        let testDir = FileManager.default.temporaryDirectory.appendingPathComponent("cache-test-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: testDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: testDir) }
-        cache.setCachedSize(for: testDir, size: 12345)
-        // Give the async barrier write time to complete
-        Thread.sleep(forTimeInterval: 0.15)
-        let size = cache.getCachedSize(for: testDir)
-        #expect(size == 12345)
-    }
-
-    @Test("invalidate removes cached entry")
-    func invalidate() {
-        let cache = FolderSizeCache.shared
-        let testDir = FileManager.default.temporaryDirectory.appendingPathComponent("cache-inv-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: testDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: testDir) }
-        cache.setCachedSize(for: testDir, size: 999)
-        Thread.sleep(forTimeInterval: 0.15)
-        cache.invalidate(for: testDir)
-        Thread.sleep(forTimeInterval: 0.15)
-        let size = cache.getCachedSize(for: testDir)
-        #expect(size == nil)
     }
 }
 
@@ -597,7 +557,7 @@ struct HelperTests {
 struct NavigateToSortModeTests {
     @Test("navigating to Downloads sets sortMode to modified")
     @MainActor func downloadsUsesModifiedSort() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let downloads = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
         manager.navigateTo(downloads)
         #expect(manager.sortMode == .modified)
@@ -605,7 +565,7 @@ struct NavigateToSortModeTests {
 
     @Test("navigating to Documents keeps sortMode as name")
     @MainActor func documentsUsesNameSort() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let docs = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
         manager.navigateTo(docs)
         #expect(manager.sortMode == .name)
@@ -613,7 +573,7 @@ struct NavigateToSortModeTests {
 
     @Test("navigating from Downloads to Documents changes sortMode back to name")
     @MainActor func sortModeChangesOnNavigation() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let downloads = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
         let docs = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
         manager.navigateTo(downloads)
@@ -705,7 +665,7 @@ struct ShortcutItemTests {
 struct ContainsLocalTests {
     @Test("containsLocal returns true for added local URL")
     @MainActor func containsLocalTrue() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         let item = makeLocalItem("test.txt", path: "/tmp/contains-local-test")
         sel.add(item)
@@ -715,14 +675,14 @@ struct ContainsLocalTests {
 
     @Test("containsLocal returns false for non-existent URL")
     @MainActor func containsLocalFalse() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         #expect(!sel.containsLocal(URL(fileURLWithPath: "/tmp/not-added")))
     }
 
     @Test("containsLocal returns false for iPhone items with same path")
     @MainActor func containsLocalNotIPhone() {
-        let sel = SelectionManager.shared
+        let sel = SelectionManager()
         sel.clear()
         let item = makeIPhoneItem("phone.txt", path: "/tmp/phone-path")
         sel.add(item)
@@ -861,7 +821,7 @@ struct ColorTagManagerTests {
     }
 
     @Test("save and reload preserves data")
-    @MainActor func saveAndReload() {
+    @MainActor func saveAndReload() async throws {
         let tmpDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("color-tag-persist-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -873,7 +833,7 @@ struct ColorTagManagerTests {
         let mgr1 = ColorTagManager(filePath: jsonPath)
         mgr1.add(URL(fileURLWithPath: "/tmp/persist1.txt"), color: .red)
         mgr1.add(URL(fileURLWithPath: "/tmp/persist2.txt"), color: .blue)
-        mgr1.save()
+        try await mgr1.flush()
 
         // Create new instance from same file
         let mgr2 = ColorTagManager(filePath: jsonPath)
@@ -926,7 +886,7 @@ struct SizeSortTests {
         try Data(repeating: 0, count: 100).write(to: directory.appendingPathComponent("large-z.txt"))
         try Data(repeating: 0, count: 100).write(to: directory.appendingPathComponent("large-a.txt"))
 
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         manager.navigateTo(directory)
         // sortMode didSet reloads; small local dirs list synchronously
         manager.sortMode = .size
@@ -941,7 +901,7 @@ struct SizeSortTests {
 struct AppSettingsTests {
     @Test("shared instance has valid defaults or loaded values")
     @MainActor func sharedExists() {
-        let settings = AppSettings.shared
+        let settings = makeTestSettings()
         // Font size should be reasonable (either default 12 or loaded value)
         #expect(settings.previewFontSize >= 8)
         #expect(settings.previewFontSize <= 32)
@@ -949,7 +909,7 @@ struct AppSettingsTests {
 
     @Test("font size clamped by increase/decrease")
     @MainActor func fontSizeClamping() {
-        let settings = AppSettings.shared
+        let settings = makeTestSettings()
         let original = settings.previewFontSize
 
         // Set to max and try to go higher
@@ -968,7 +928,7 @@ struct AppSettingsTests {
 
     @Test("preferred apps add and remove")
     @MainActor func preferredApps() {
-        let settings = AppSettings.shared
+        let settings = makeTestSettings()
         let testKey = "__test_ext_\(UUID().uuidString)__"
 
         settings.addPreferredApp(for: testKey, appPath: "/Applications/TextEdit.app")
@@ -980,7 +940,7 @@ struct AppSettingsTests {
 
     @Test("normalizes empty extension to __empty__")
     @MainActor func emptyExtensionNormalized() {
-        let settings = AppSettings.shared
+        let settings = makeTestSettings()
         settings.addPreferredApp(for: "", appPath: "/tmp/test.app")
         #expect(settings.getPreferredApps(for: "").contains("/tmp/test.app"))
         settings.removePreferredApp(for: "", appPath: "/tmp/test.app")
@@ -1228,7 +1188,7 @@ struct MovieAPITests {
 struct SearchDebounceTests {
     @Test("empty search clears results")
     @MainActor func emptySearchClears() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         manager.performSearch("")
         #expect(manager.searchResults.isEmpty)
         #expect(!manager.isSearchRunning)
@@ -1236,7 +1196,7 @@ struct SearchDebounceTests {
 
     @Test("whitespace-only search clears results")
     @MainActor func whitespaceSearchClears() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         manager.performSearch("   ")
         #expect(manager.searchResults.isEmpty)
         #expect(!manager.isSearchRunning)
@@ -1244,7 +1204,7 @@ struct SearchDebounceTests {
 
     @Test("active empty search shows indexed files")
     @MainActor func activeEmptySearchShowsIndexedFiles() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let root = URL(fileURLWithPath: "/tmp/search-index")
         let psd = CachedFileInfo(
             url: root.appendingPathComponent("design.psd"),
@@ -1274,7 +1234,7 @@ struct SearchDebounceTests {
 
     @Test("extension toggle filters indexed search results")
     @MainActor func extensionToggleFiltersIndexedResults() {
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         let root = URL(fileURLWithPath: "/tmp/search-index")
         let psd = CachedFileInfo(
             url: root.appendingPathComponent("art/design.psd"),
@@ -1321,7 +1281,7 @@ struct SearchDebounceTests {
         try "match".write(to: file, atomically: true, encoding: .utf8)
         defer { try? fileManager.removeItem(at: root) }
 
-        let manager = FileExplorerManager()
+        let manager = makeTestManager()
         manager.currentPath = root
         manager.startSearch(withQuery: "matching")
 
@@ -1573,7 +1533,7 @@ struct MarkdownLinkTargetTests {
 struct PreviewFollowStackTests {
     @Test("following pushes onto the stack without touching the cursor")
     @MainActor func followKeepsCursor() {
-        let mgr = FileExplorerManager()
+        let mgr = makeTestManager()
         let readme = URL(fileURLWithPath: "/tmp/README.md")
         let other = URL(fileURLWithPath: "/tmp/OTHER.md")
         mgr.selectedItem = readme
@@ -1587,7 +1547,7 @@ struct PreviewFollowStackTests {
 
     @Test("back walks the chain and forward re-enters it")
     @MainActor func backAndForward() {
-        let mgr = FileExplorerManager()
+        let mgr = makeTestManager()
         let a = URL(fileURLWithPath: "/tmp/a.md")
         let b = URL(fileURLWithPath: "/tmp/b.md")
         mgr.selectedItem = URL(fileURLWithPath: "/tmp/root.md")
@@ -1607,13 +1567,13 @@ struct PreviewFollowStackTests {
 
     @Test("back reports false when nothing has been followed")
     @MainActor func backOnEmptyStack() {
-        let mgr = FileExplorerManager()
+        let mgr = makeTestManager()
         #expect(mgr.previewBack() == false)
     }
 
     @Test("following a new link drops the forward stack")
     @MainActor func followClearsForward() {
-        let mgr = FileExplorerManager()
+        let mgr = makeTestManager()
         mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/a.md")))
         mgr.previewBack()
         #expect(!mgr.previewForwardStack.isEmpty)
@@ -1624,7 +1584,7 @@ struct PreviewFollowStackTests {
 
     @Test("moving the browser cursor ends the excursion")
     @MainActor func cursorChangeClearsStack() {
-        let mgr = FileExplorerManager()
+        let mgr = makeTestManager()
         mgr.selectedItem = URL(fileURLWithPath: "/tmp/root.md")
         mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/a.md")))
         mgr.previewBack()
@@ -1638,7 +1598,7 @@ struct PreviewFollowStackTests {
 
     @Test("the cursor being dropped on a reload also ends it")
     @MainActor func nilCursorClearsStack() {
-        let mgr = FileExplorerManager()
+        let mgr = makeTestManager()
         mgr.selectedItem = URL(fileURLWithPath: "/tmp/root.md")
         mgr.followPreview(PreviewTarget(URL(fileURLWithPath: "/tmp/a.md")))
 

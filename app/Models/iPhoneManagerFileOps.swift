@@ -5,7 +5,7 @@ extension iPhoneManager {
     // MARK: - AFC Client Helper
 
     /// Sets up an AFC client connection to an app's documents via house_arrest, calls the body closure, and cleans up.
-    nonisolated static func withAfcClient<T>(deviceId: String, appId: String, body: (afc_client_t) -> T?) -> T? {
+    nonisolated static func withAfcClient<T>(deviceId: String, appId: String, body: (afc_client_t) throws -> T?) rethrows -> T? {
         var idev: idevice_t?
         var lockdown: lockdownd_client_t?
         var service: lockdownd_service_descriptor_t?
@@ -35,50 +35,10 @@ extension iPhoneManager {
 
         guard afc_client_new_from_house_arrest_client(haClient, &afc) == AFC_E_SUCCESS,
               let afcClient = afc else { return nil }
+        defer { afc_client_free(afcClient) }
 
-        return body(afcClient)
+        return try body(afcClient)
     }
-
-    // MARK: - Context-based operations (for SelectionManager)
-
-    /// Download file with explicit context (device/app)
-    func downloadFileFromContext(deviceId: String, appId: String, remotePath: String, to localPath: URL) async -> Bool {
-        try? fileManager.removeItem(at: localPath)
-
-        return await Task.detached { () -> Bool in
-            iPhoneFileSource.downloadSync(deviceId: deviceId, appId: appId, remotePath: remotePath, to: localPath)
-        }.value
-    }
-
-    /// Upload file or directory with explicit context
-    func uploadFileFromContext(deviceId: String, appId: String, localURL: URL, toPath: String) async -> Bool {
-        let remotePath = toPath.hasSuffix("/") ? "\(toPath)\(localURL.lastPathComponent)" : "\(toPath)/\(localURL.lastPathComponent)"
-
-        // Check if it's a directory
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: localURL.path, isDirectory: &isDir) else { return false }
-
-        return await Task.detached { () -> Bool in
-            Self.withAfcClient(deviceId: deviceId, appId: appId) { afcClient in
-                if isDir.boolValue {
-                    return Self.uploadDirectoryRecursive(afcClient, localPath: localURL, remotePath: remotePath)
-                } else {
-                    return Self.uploadSingleFile(afcClient, localURL: localURL, remotePath: remotePath)
-                }
-            } ?? false
-        }.value
-    }
-
-    /// Delete file with explicit context
-    func deleteFileFromContext(deviceId: String, appId: String, remotePath: String) async -> Bool {
-        return await Task.detached { () -> Bool in
-            Self.withAfcClient(deviceId: deviceId, appId: appId) { afcClient in
-                afc_remove_path(afcClient, remotePath) == AFC_E_SUCCESS
-            } ?? false
-        }.value
-    }
-
-    // MARK: - Static helper functions for recursive operations
 
     nonisolated static func uploadSingleFile(_ afc: afc_client_t, localURL: URL, remotePath: String) -> Bool {
         var handle: UInt64 = 0
@@ -89,45 +49,18 @@ extension iPhoneManager {
         inputStream.open()
         defer { inputStream.close() }
 
-        var buffer = [UInt8](repeating: 0, count: 65536)
-
-        while inputStream.hasBytesAvailable {
-            let bytesRead = inputStream.read(&buffer, maxLength: buffer.count)
-            if bytesRead <= 0 { break }
-
-            var bytesWritten: UInt32 = 0
-            let err = afc_file_write(afc, handle, buffer, UInt32(bytesRead), &bytesWritten)
-            if err != AFC_E_SUCCESS { return false }
-        }
-
-        return true
-    }
-
-    nonisolated static func uploadDirectoryRecursive(_ afc: afc_client_t, localPath: URL, remotePath: String) -> Bool {
-        // Create remote directory
-        if afc_make_directory(afc, remotePath) != AFC_E_SUCCESS {
-            // Directory might already exist, continue anyway
-        }
-
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(at: localPath, includingPropertiesForKeys: [.isDirectoryKey]) else {
-            return false
-        }
-
-        for item in contents {
-            let itemRemotePath = "\(remotePath)/\(item.lastPathComponent)"
-            var isDir: ObjCBool = false
-            fm.fileExists(atPath: item.path, isDirectory: &isDir)
-
-            if isDir.boolValue {
-                if !uploadDirectoryRecursive(afc, localPath: item, remotePath: itemRemotePath) {
-                    return false
+        do {
+            try StreamTransfer.copy { buffer, capacity in
+                inputStream.read(buffer, maxLength: capacity)
+            } write: { buffer, count in
+                var written: UInt32 = 0
+                guard afc_file_write(afc, handle, buffer, UInt32(count), &written) == AFC_E_SUCCESS else {
+                    throw iPhoneSourceError.transferFailed
                 }
-            } else {
-                if !uploadSingleFile(afc, localURL: item, remotePath: itemRemotePath) {
-                    return false
-                }
+                return Int(written)
             }
+        } catch {
+            return false
         }
 
         return true

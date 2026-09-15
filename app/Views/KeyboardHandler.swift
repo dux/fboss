@@ -274,18 +274,8 @@ class KeyCaptureView: NSView {
             }
         case 8: // C key
             if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) {
-                let selection = SelectionManager.shared
-                guard !selection.items.isEmpty else { return false }
-                let items = selection.localItems.compactMap { item in
-                    item.localURL.map { (name: item.name, url: $0) }
-                }
-                let dest = manager.currentPath
-                selection.clear()
-                Task {
-                    let count = await CopyProgressManager.shared.copyItems(items, to: dest)
-                    ToastManager.shared.show("Copied \(count) item(s)")
-                    manager.refresh()
-                }
+                guard !manager.selection.isEmpty else { return false }
+                manager.transferItems()
                 return true
             }
             if event.modifierFlags.contains(.control) {
@@ -359,18 +349,8 @@ class KeyCaptureView: NSView {
             return true
         case 9: // V key - Cmd+Shift+V: move selection here
             if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) {
-                let selection = SelectionManager.shared
-                guard !selection.items.isEmpty else { return false }
-                let items = selection.localItems.compactMap { item in
-                    item.localURL.map { (name: item.name, url: $0) }
-                }
-                let dest = manager.currentPath
-                selection.clear()
-                Task {
-                    let count = await selection.moveItems(items, to: dest)
-                    ToastManager.shared.show("Moved \(count) file(s)")
-                    manager.refresh()
-                }
+                guard !manager.selection.isEmpty else { return false }
+                manager.transferItems(move: true)
                 return true
             }
         case 46: // M key - Cmd+Shift+M: context menu

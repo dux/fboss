@@ -2,15 +2,14 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class AppSettings: ObservableObject {
+final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
     static let configBase = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/dux-file-explorer")
-    private let configDir = AppSettings.configBase
     private let configFile: URL
     private var isLoading = false
-    private var saveTask: Task<Void, Never>?
+    private let writer: DebouncedJSONWriter<SettingsSnapshot>
 
     @Published var previewFontSize: CGFloat {
         didSet { saveAsync() }
@@ -102,8 +101,11 @@ class AppSettings: ObservableObject {
         didSet { saveAsync() }
     }
 
-    private init() {
-        configFile = configDir.appendingPathComponent("settings.json")
+    init(file: URL = AppSettings.configBase.appendingPathComponent("settings.json")) {
+        configFile = file
+        writer = DebouncedJSONWriter(file: file) { error in
+            ToastManager.shared.showError("Could not save settings: \(error.localizedDescription)")
+        }
 
         // Default values
         previewFontSize = 14
@@ -132,8 +134,9 @@ class AppSettings: ObservableObject {
             "deps", "dist", "node_modules", "target", "tmp"
         ]
 
-        // Migrate from old config path
-        migrateOldConfig()
+        if file == Self.configBase.appendingPathComponent("settings.json") {
+            migrateOldConfig()
+        }
 
         // Load saved settings
         isLoading = true
@@ -145,21 +148,19 @@ class AppSettings: ObservableObject {
         let fm = FileManager.default
         let oldDir = fm.homeDirectoryForCurrentUser.appendingPathComponent(".config/dux-finder")
         let oldFile = oldDir.appendingPathComponent("settings.json")
-
-        // Ensure new config dir exists
-        try? fm.createDirectory(at: configDir, withIntermediateDirectories: true)
-
-        // Migrate settings.json if old exists and new doesn't
-        if fm.fileExists(atPath: oldFile.path) && !fm.fileExists(atPath: configFile.path) {
-            try? fm.copyItem(at: oldFile, to: configFile)
-        }
-
-        // Clean up old dir if empty or only has settings.json
-        if fm.fileExists(atPath: oldDir.path) {
-            let contents = (try? fm.contentsOfDirectory(atPath: oldDir.path)) ?? []
-            if contents.isEmpty || contents == ["settings.json"] {
-                try? fm.removeItem(at: oldDir)
+        do {
+            try fm.createDirectory(at: configFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if fm.fileExists(atPath: oldFile.path) && !fm.fileExists(atPath: configFile.path) {
+                try fm.copyItem(at: oldFile, to: configFile)
             }
+            if fm.fileExists(atPath: oldDir.path) {
+                let contents = try fm.contentsOfDirectory(atPath: oldDir.path)
+                if contents.isEmpty || contents == ["settings.json"] {
+                    try fm.removeItem(at: oldDir)
+                }
+            }
+        } catch {
+            ToastManager.shared.showError("Could not migrate settings: \(error.localizedDescription)")
         }
     }
 
@@ -231,12 +232,7 @@ class AppSettings: ObservableObject {
     private func saveAsync() {
         guard !isLoading else { return }
 
-        // Cancel previous pending save (debounce)
-        saveTask?.cancel()
-
         let snapshot = SettingsSnapshot(
-            configDir: configDir,
-            configFile: configFile,
             fontSize: previewFontSize,
             split: previewPaneSplit,
             showPreview: showPreviewPane,
@@ -260,16 +256,12 @@ class AppSettings: ObservableObject {
             copySkipFolders: copySkipFolders
         )
 
-        saveTask = Task.detached(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-            Self.writeToDisk(snapshot)
-        }
+        writer.schedule(snapshot)
     }
 
-    private struct SettingsSnapshot: Sendable {
-        let configDir: URL
-        let configFile: URL
+    func flush() async throws { try await writer.flush() }
+
+    private struct SettingsSnapshot: Codable, Sendable {
         let fontSize: CGFloat
         let split: CGFloat
         let showPreview: Bool
@@ -291,39 +283,14 @@ class AppSettings: ObservableObject {
         let fontSmall: CGFloat
         let fontTitle: CGFloat
         let copySkipFolders: [String]
-    }
 
-    nonisolated private static func writeToDisk(_ s: SettingsSnapshot) {
-        try? FileManager.default.createDirectory(at: s.configDir, withIntermediateDirectories: true)
-
-        var json: [String: Any] = [
-            "previewFontSize": s.fontSize,
-            "previewPaneSplit": s.split,
-            "showPreviewPane": s.showPreview,
-            "leftPaneWidth": s.leftWidth,
-            "rightPaneWidth": s.rightWidth,
-            "browserViewMode": s.viewMode,
-            "preferredApps": s.apps
-        ]
-
-        if let x = s.winX { json["windowX"] = x }
-        if let y = s.winY { json["windowY"] = y }
-        if let w = s.winW { json["windowWidth"] = w }
-        if let h = s.winH { json["windowHeight"] = h }
-
-        json["defaultFolderHandler"] = s.folderHandler
-        json["flatFolders"] = s.flatFolders
-        json["audioAutoNext"] = s.audioAutoNext
-        json["omdbAPIKey"] = s.omdbKey
-        json["recentlyUsedApps"] = s.recentApps
-        json["fontDefault"] = s.fontDefault
-        json["fontButtons"] = s.fontButtons
-        json["fontSmall"] = s.fontSmall
-        json["fontTitle"] = s.fontTitle
-        json["copySkipFolders"] = s.copySkipFolders
-
-        if let data = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted) {
-            try? data.write(to: s.configFile)
+        enum CodingKeys: String, CodingKey {
+            case fontSize = "previewFontSize", split = "previewPaneSplit", showPreview = "showPreviewPane"
+            case leftWidth = "leftPaneWidth", rightWidth = "rightPaneWidth", viewMode = "browserViewMode"
+            case winX = "windowX", winY = "windowY", winW = "windowWidth", winH = "windowHeight"
+            case apps = "preferredApps", folderHandler = "defaultFolderHandler", omdbKey = "omdbAPIKey"
+            case recentApps = "recentlyUsedApps"
+            case flatFolders, audioAutoNext, fontDefault, fontButtons, fontSmall, fontTitle, copySkipFolders
         }
     }
 

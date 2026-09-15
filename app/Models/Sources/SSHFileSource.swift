@@ -148,9 +148,8 @@ final class SSHFileSource: FileSystemSource, Sendable {
         return localPath
     }
 
-    func download(_ url: URL, toDirectory dest: URL) async throws {
+    func downloadFile(_ url: URL, to localPath: URL) async throws {
         let path = Self.remotePath(for: url)
-        let localPath = dest.appendingPathComponent(url.lastPathComponent)
         try await connection.run { conn in
             try conn.downloadSync(path, to: localPath)
         }

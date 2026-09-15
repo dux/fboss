@@ -131,7 +131,7 @@ final class iPhoneFileSource: FileSystemSource {
     }
 
     func stat(_ url: URL) async throws -> SourceEntry? {
-        if Self.depth(of: url) <= 1 { return nil }
+        if Self.depth(of: url) == 0 { return nil }
         guard let (bundleId, afcPath) = Self.afcContext(for: url) else { return nil }
         let udid = self.udid
         let file = await Task.detached {
@@ -176,9 +176,7 @@ final class iPhoneFileSource: FileSystemSource {
             }
             try fm.createDirectory(at: localPath.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? fm.removeItem(at: localPath)
-            guard Self.downloadSync(deviceId: udid, appId: bundleId, remotePath: afcPath, to: localPath) else {
-                return false
-            }
+            try Self.downloadSync(deviceId: udid, appId: bundleId, remotePath: afcPath, to: localPath)
             if let mod = remote.modifiedDate {
                 try? fm.setAttributes([.modificationDate: mod], ofItemAtPath: localPath.path)
             }
@@ -189,33 +187,26 @@ final class iPhoneFileSource: FileSystemSource {
         return localPath
     }
 
-    func download(_ url: URL, toDirectory dest: URL) async throws {
+    func downloadFile(_ url: URL, to localPath: URL) async throws {
         guard let (bundleId, afcPath) = Self.afcContext(for: url) else {
             throw iPhoneSourceError.badPath
         }
         let udid = self.udid
-        let localPath = dest.appendingPathComponent(url.lastPathComponent)
-        let ok = await Task.detached(priority: .userInitiated) {
-            Self.downloadSync(deviceId: udid, appId: bundleId, remotePath: afcPath, to: localPath)
-        }.value
-        guard ok else { throw iPhoneSourceError.transferFailed }
+        try await BlockingFileIO.run {
+            try Self.downloadSync(deviceId: udid, appId: bundleId, remotePath: afcPath, to: localPath)
+        }
     }
 
     func upload(localURL: URL, toDirectory dest: URL) async throws {
-        guard let (bundleId, afcPath) = Self.afcContext(for: dest) ?? Self.appRootContext(for: dest) else {
-            throw iPhoneSourceError.badPath
+        guard let (bundleId, afcPath) = Self.afcContext(for: dest) else { throw iPhoneSourceError.badPath }
+        let udid = self.udid
+        try await BlockingFileIO.run {
+            let ok = iPhoneManager.withAfcClient(deviceId: udid, appId: bundleId) { afc in
+                iPhoneManager.uploadSingleFile(afc, localURL: localURL, remotePath: afcPath + "/" + localURL.lastPathComponent)
+            }
+            try Task.checkCancellation()
+            guard ok == true else { throw iPhoneSourceError.transferFailed }
         }
-        let ok = await iPhoneManager.shared.uploadFileFromContext(
-            deviceId: udid, appId: bundleId, localURL: localURL, toPath: afcPath
-        )
-        guard ok else { throw iPhoneSourceError.transferFailed }
-    }
-
-    /// afcContext for an app-level URL (depth 1) so uploads into the app root work.
-    private static func appRootContext(for url: URL) -> (bundleId: String, afcPath: String)? {
-        let comps = url.pathComponents.filter { $0 != "/" }
-        guard comps.count == 1 else { return nil }
-        return (comps[0], "/Documents")
     }
 
     // MARK: - Mutations
@@ -453,6 +444,8 @@ final class iPhoneFileSource: FileSystemSource {
                         j += 2
                     }
                     afc_dictionary_free(fileInfo)
+                } else {
+                    return nil
                 }
 
                 results.append(iPhoneFile(
@@ -507,29 +500,34 @@ final class iPhoneFileSource: FileSystemSource {
         }
     }
 
-    /// Streamed file download. Extracted from downloadFileFromContext.
-    nonisolated static func downloadSync(deviceId: String, appId: String, remotePath: String, to localPath: URL) -> Bool {
-        iPhoneManager.withAfcClient(deviceId: deviceId, appId: appId) { afcClient in
+    /// Single-file primitive; FileTransfer owns recursive traversal and destination staging.
+    nonisolated static func downloadSync(deviceId: String, appId: String, remotePath: String, to localPath: URL) throws {
+        let result: Void? = try iPhoneManager.withAfcClient(deviceId: deviceId, appId: appId) { afc in
             var handle: UInt64 = 0
-            guard afc_file_open(afcClient, remotePath, AFC_FOPEN_RDONLY, &handle) == AFC_E_SUCCESS else { return false }
-            defer { afc_file_close(afcClient, handle) }
-
-            guard let outputStream = OutputStream(url: localPath, append: false) else { return false }
-            outputStream.open()
-            defer { outputStream.close() }
-
-            var buffer = [UInt8](repeating: 0, count: 65536)
-            var bytesRead: UInt32 = 0
-
-            while true {
-                let err = afc_file_read(afcClient, handle, &buffer, UInt32(buffer.count), &bytesRead)
-                if err != AFC_E_SUCCESS || bytesRead == 0 { break }
-                outputStream.write(buffer, maxLength: Int(bytesRead))
+            guard afc_file_open(afc, remotePath, AFC_FOPEN_RDONLY, &handle) == AFC_E_SUCCESS else {
+                throw iPhoneSourceError.transferFailed
             }
-
-            return true
-        } ?? false
+            defer { afc_file_close(afc, handle) }
+            guard let output = OutputStream(url: localPath, append: false) else {
+                throw iPhoneSourceError.transferFailed
+            }
+            output.open()
+            defer { output.close() }
+            guard output.streamStatus != .error else { throw iPhoneSourceError.transferFailed }
+            try StreamTransfer.copy { buffer, capacity in
+                var count: UInt32 = 0
+                guard afc_file_read(afc, handle, buffer, UInt32(capacity), &count) == AFC_E_SUCCESS else {
+                    throw iPhoneSourceError.transferFailed
+                }
+                return Int(count)
+            } write: { buffer, count in
+                output.write(buffer, maxLength: count)
+            }
+            return ()
+        }
+        guard result != nil else { throw iPhoneSourceError.connectionFailed }
     }
+
 }
 
 enum iPhoneSourceError: LocalizedError {

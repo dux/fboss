@@ -2,17 +2,20 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class FolderIconManager: ObservableObject {
+final class FolderIconManager: ObservableObject {
     static let shared = FolderIconManager()
 
     /// folder path -> emoji string
-    @Published var icons: [String: String] = [:]
+    @Published private(set) var icons: [String: String] = [:]
 
     private let configFile: URL
-    private var saveTask: Task<Void, Never>?
+    private let writer: DebouncedJSONWriter<[String: String]>
 
-    private init() {
-        configFile = AppSettings.configBase.appendingPathComponent("folder-icons.json")
+    init(file: URL = AppSettings.configBase.appendingPathComponent("folder-icons.json")) {
+        configFile = file
+        writer = DebouncedJSONWriter(file: file) { error in
+            ToastManager.shared.showError("Could not save folder icons: \(error.localizedDescription)")
+        }
         load()
     }
 
@@ -43,18 +46,9 @@ class FolderIconManager: ObservableObject {
         icons = dict
     }
 
-    private func saveAsync() {
-        saveTask?.cancel()
-        let snapshot = icons
-        let file = configFile
-        saveTask = Task.detached(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled else { return }
-            if let data = try? JSONSerialization.data(withJSONObject: snapshot, options: .prettyPrinted) {
-                try? data.write(to: file)
-            }
-        }
-    }
+    private func saveAsync() { writer.schedule(icons) }
+
+    func flush() async throws { try await writer.flush() }
 }
 
 /// Single reusable view for rendering folder icons across the whole app.

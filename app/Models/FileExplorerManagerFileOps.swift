@@ -312,32 +312,9 @@ extension FileExplorerManager {
         }
     }
 
-    /// Upload local files into a remote folder with transfer progress,
-    /// then refresh. Used by drag-drop and the context menu.
+    /// Dropped files use the same transfer path as selection actions.
     func uploadItems(_ localURLs: [URL], to destination: URL) {
-        let source = SourceRegistry.shared.source(for: destination)
-        guard source.capabilities(at: destination).contains(.write) else { return }
-
-        Task { [weak self] in
-            let progress = iPhoneTransferProgressManager.shared
-            progress.start(direction: .upload, total: localURLs.count)
-            var uploaded = 0
-            for url in localURLs {
-                if progress.isCancelled { break }
-                progress.update(file: url.lastPathComponent, completed: uploaded)
-                do {
-                    try await source.upload(localURL: url, toDirectory: destination)
-                    uploaded += 1
-                } catch {
-                    ToastManager.shared.showError("Failed to upload \(url.lastPathComponent)")
-                }
-            }
-            progress.finish()
-            if uploaded > 0 {
-                ToastManager.shared.show("Uploaded \(uploaded) item(s)")
-                self?.loadContents()
-            }
-        }
+        transferItems(localURLs.compactMap { FileItem.fromLocal($0) }, to: destination)
     }
 
     /// Delete on sources without a trash (remote backends). Permanent.

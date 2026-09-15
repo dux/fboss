@@ -103,7 +103,7 @@ class FileExplorerManager: ObservableObject {
     private var selectionMemory: [String: URL] = [:]
     @Published var browserViewMode: BrowserViewMode = .files {
         didSet {
-            AppSettings.shared.browserViewMode = browserViewMode.rawValue.lowercased()
+            settings.browserViewMode = browserViewMode.rawValue.lowercased()
         }
     }
     private var suppressSortDidSet = false
@@ -116,7 +116,10 @@ class FileExplorerManager: ObservableObject {
     }
 
     // Use unified SelectionManager
-    var selection: SelectionManager { SelectionManager.shared }
+    let selection: SelectionManager
+    let settings: AppSettings
+    var transferTask: Task<Void, Never>?
+    var directorySizeTask: Task<Void, Never>?
 
     private var history: [URL] = []
     private var historyIndex: Int = -1
@@ -162,7 +165,9 @@ class FileExplorerManager: ObservableObject {
         return URL(fileURLWithPath: path)
     }
 
-    init() {
+    init(settings: AppSettings = .shared, selection: SelectionManager = .shared) {
+        self.settings = settings
+        self.selection = selection
         // Use initial path from command line argument if provided
         if let initialPath = FileExplorerApp.initialPath {
             self.currentPath = initialPath
@@ -172,7 +177,7 @@ class FileExplorerManager: ObservableObject {
             self.currentPath = fileManager.homeDirectoryForCurrentUser
         }
         // Restore browser view mode from settings
-        let savedMode = AppSettings.shared.browserViewMode.lowercased()
+        let savedMode = settings.browserViewMode.lowercased()
         if let mode = BrowserViewMode.allCases.first(where: { $0.rawValue.lowercased() == savedMode }) {
             self.browserViewMode = mode
         }
@@ -204,6 +209,7 @@ class FileExplorerManager: ObservableObject {
     }
 
     deinit {
+        directorySizeTask?.cancel()
         if let openPathObserver {
             NotificationCenter.default.removeObserver(openPathObserver)
         }

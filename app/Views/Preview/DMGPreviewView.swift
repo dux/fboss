@@ -433,12 +433,10 @@ struct DMGPreviewView: View {
         // Check if already mounted by us
         if let existingMount = DMGMountManager.shared.getMountPath(for: dmgURL),
            FileManager.default.fileExists(atPath: existingMount) {
-            await MainActor.run {
-                guard loadID == currentLoadID, url == dmgURL else { return }
-                self.mountPath = existingMount
-                self.mountedURL = dmgURL
-                loadContents(from: existingMount)
-            }
+            guard loadID == currentLoadID, url == dmgURL else { return }
+            self.mountPath = existingMount
+            self.mountedURL = dmgURL
+            await loadContents(from: existingMount)
             return
         }
 
@@ -496,7 +494,7 @@ struct DMGPreviewView: View {
             self.mountedURL = dmgURL
             self.volumeName = volName ?? dmgURL.deletingPathExtension().lastPathComponent
             DMGMountManager.shared.setMountPath(result.mountPoint, for: dmgURL)
-            loadContents(from: result.mountPoint)
+            await loadContents(from: result.mountPoint)
 
             // Check which apps are already installed
             for entry in entries where entry.isApp {
@@ -517,76 +515,66 @@ struct DMGPreviewView: View {
         }
     }
 
-    private func loadContents(from path: String) {
-        let fileManager = FileManager.default
-        var items: [DMGEntry] = []
-
+    private func loadContents(from path: String) async {
         do {
-            let contents = try fileManager.contentsOfDirectory(at: URL(fileURLWithPath: path),
-                                                                includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .totalFileSizeKey])
-
-            for fileURL in contents {
-                // Skip hidden files
-                let name = fileURL.lastPathComponent
-                if name.hasPrefix(".") { continue }
-
-                // Skip Applications shortcut (symlink or alias common in DMGs)
-                if name == "Applications" || name == " " {
-                    continue
-                }
-                if let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: fileURL.path),
-                   dest == "/Applications" || dest.hasSuffix("/Applications") {
-                    continue
-                }
-
-                let resourceValues = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey, .totalFileSizeKey])
-                let isDirectory = resourceValues?.isDirectory ?? false
-                let isApp = fileURL.pathExtension.lowercased() == "app"
-
-                var size: Int64 = 0
-                if isApp {
-                    size = getDirectorySize(fileURL)
-                } else if !isDirectory {
-                    size = Int64(resourceValues?.fileSize ?? 0)
-                }
-
-                items.append(DMGEntry(
-                    url: fileURL,
-                    name: name,
-                    size: size,
-                    isDirectory: isDirectory,
-                    isApp: isApp
-                ))
-            }
-
-            // Sort: apps first, then folders, then files
-            items.sort { a, b in
-                if a.isApp != b.isApp { return a.isApp }
-                if a.isDirectory != b.isDirectory { return a.isDirectory }
-                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-            }
-
+            let items = try await BlockingFileIO.run { try Self.readEntries(from: path) }
+            guard mountPath == path else { return }
             entries = items
             isLoading = false
         } catch {
-            errorMessage = "Failed to read contents"
+            errorMessage = "Failed to read contents: \(error.localizedDescription)"
             isLoading = false
         }
     }
 
-    private func getDirectorySize(_ url: URL) -> Int64 {
+    nonisolated private static func readEntries(from path: String) throws -> [DMGEntry] {
         let fileManager = FileManager.default
-        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
-            return 0
+        var items: [DMGEntry] = []
+        let contents = try fileManager.contentsOfDirectory(at: URL(fileURLWithPath: path),
+                                                            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .totalFileSizeKey])
+
+        for fileURL in contents {
+            // Skip hidden files
+            let name = fileURL.lastPathComponent
+            if name.hasPrefix(".") { continue }
+
+            // Skip Applications shortcut (symlink or alias common in DMGs)
+            if name == "Applications" || name == " " {
+                continue
+            }
+            if let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: fileURL.path),
+               dest == "/Applications" || dest.hasSuffix("/Applications") {
+                continue
+            }
+
+            let resourceValues = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey, .totalFileSizeKey])
+            let isDirectory = resourceValues?.isDirectory ?? false
+            let isApp = fileURL.pathExtension.lowercased() == "app"
+
+            var size: Int64 = 0
+            if isApp {
+                size = try FolderSizeCalculator.measureSync(fileURL).bytes
+            } else if !isDirectory {
+                size = Int64(resourceValues?.fileSize ?? 0)
+            }
+
+            items.append(DMGEntry(
+                url: fileURL,
+                name: name,
+                size: size,
+                isDirectory: isDirectory,
+                isApp: isApp
+            ))
         }
 
-        var totalSize: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                totalSize += Int64(size)
-            }
+        // Sort: apps first, then folders, then files
+        items.sort { a, b in
+            if a.isApp != b.isApp { return a.isApp }
+            if a.isDirectory != b.isDirectory { return a.isDirectory }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
         }
-        return totalSize
+
+        return items
     }
 
     private func openEntry(_ entry: DMGEntry) {

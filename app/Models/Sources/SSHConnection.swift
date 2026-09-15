@@ -57,7 +57,6 @@ final class SSHConnection: @unchecked Sendable {
         static let statFollow: Int32 = 0   // LIBSSH2_SFTP_STAT
         static let statLink: Int32 = 1     // LIBSSH2_SFTP_LSTAT
         static let linkRealpath: Int32 = 2 // LIBSSH2_SFTP_REALPATH
-        static let renameOverwrite = 0x1, renameAtomic = 0x2, renameNative = 0x4
         static let attrSize: UInt = 0x1
         static let attrPermissions: UInt = 0x4
         static let attrAcModTime: UInt = 0x8
@@ -528,7 +527,7 @@ final class SSHConnection: @unchecked Sendable {
                     guard let base = raw.baseAddress else { return -1 }
                     return libssh2_sftp_write(handle, base.assumingMemoryBound(to: CChar.self) + offset, n - offset)
                 }
-                if written < 0 { throw sftpError("Upload \(path)") }
+                if written <= 0 { throw sftpError("Upload \(path)") }
                 offset += written
             }
         }
@@ -554,7 +553,7 @@ final class SSHConnection: @unchecked Sendable {
 
     func renameSync(_ from: String, to: String) throws {
         let sftp = try requireSFTP()
-        let flags = C.renameOverwrite | C.renameAtomic | C.renameNative
+        let flags = 0
         guard libssh2_sftp_rename_ex(sftp, from, UInt32(from.utf8.count), to, UInt32(to.utf8.count), flags) == 0 else {
             throw sftpError("Rename")
         }

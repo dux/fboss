@@ -7,6 +7,23 @@ extension Notification.Name {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor in
+            do {
+                try await AppSettings.shared.flush()
+                try await FolderIconManager.shared.flush()
+                try await ColorTagManager.shared.flush()
+                sender.reply(toApplicationShouldTerminate: true)
+            } catch {
+                let alert = NSAlert(error: error)
+                alert.informativeText = "Your changes could not be saved. The application will stay open so you can retry."
+                alert.runModal()
+                sender.reply(toApplicationShouldTerminate: false)
+            }
+        }
+        return .terminateLater
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The UI is a hardcoded light (cream) theme; pin the appearance so
         // webview previews don't render dark-mode CSS on light backgrounds.

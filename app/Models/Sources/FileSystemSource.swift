@@ -89,9 +89,10 @@ protocol FileSystemSource: AnyObject, Sendable {
 
     // Content transfer. `materialize` returns a readable file:// URL for
     // previews/open-with: local returns the url itself, remote downloads to a
-    // cache. `download`/`upload` copy into a directory keeping the leaf name.
+    // cache. `downloadFile` writes one file to an exact staging URL; the shared
+    // download wrapper walks folders and chooses a free destination name.
     func materialize(_ url: URL) async throws -> URL
-    func download(_ url: URL, toDirectory dest: URL) async throws
+    func downloadFile(_ url: URL, to localURL: URL) async throws
     func upload(localURL: URL, toDirectory dest: URL) async throws
 
     // Mutations
@@ -107,6 +108,10 @@ protocol FileSystemSource: AnyObject, Sendable {
 }
 
 extension FileSystemSource {
+    func download(_ url: URL, toDirectory dest: URL) async throws {
+        try await FileTransfer().download(url, from: self, to: dest)
+    }
+
     func capabilities(at url: URL) -> SourceCapabilities { capabilities }
     func listSyncIfCheap(_ url: URL) throws -> [SourceEntry]? { nil }
     func existsSync(_ url: URL) -> SourceExistence? { nil }

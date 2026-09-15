@@ -1,46 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - Filtered Directory Copy
-
-/// Copies a file or directory, skipping subdirectories whose names match the skip set.
-/// Regular files are always copied, even if their name matches a skip entry.
-/// Calls onFile with the name of each item as it's copied.
-func copyItemFiltered(at src: URL, to dst: URL, skipping: Set<String>, onFile: ((String) -> Void)? = nil) throws {
-    if Task.isCancelled { throw CancellationError() }
-
-    let fm = FileManager.default
-    var isDir: ObjCBool = false
-    guard fm.fileExists(atPath: src.path, isDirectory: &isDir) else { return }
-
-    guard isDir.boolValue else {
-        try fm.copyItem(at: src, to: dst)
-        onFile?(src.lastPathComponent)
-        return
-    }
-
-    // Create destination directory preserving attributes
-    let attrs = try? fm.attributesOfItem(atPath: src.path)
-    try fm.createDirectory(at: dst, withIntermediateDirectories: true, attributes: attrs)
-
-    for child in try fm.contentsOfDirectory(atPath: src.path) {
-        if Task.isCancelled { throw CancellationError() }
-
-        let childSrc = src.appendingPathComponent(child)
-        var childIsDir: ObjCBool = false
-        fm.fileExists(atPath: childSrc.path, isDirectory: &childIsDir)
-
-        if childIsDir.boolValue && skipping.contains(child) { continue }
-
-        try copyItemFiltered(
-            at: childSrc,
-            to: dst.appendingPathComponent(child),
-            skipping: skipping,
-            onFile: onFile
-        )
-    }
-}
-
 // MARK: - File Tree View (ancestor path + children)
 
 struct FileTreeView: View {
@@ -207,13 +167,8 @@ struct FileTreeView: View {
         collectDropURLs(from: providers) { uniqueURLs in
             let items = uniqueURLs
                 .filter { $0.deletingLastPathComponent().path != currentPath.path }
-                .map { (name: $0.lastPathComponent, url: $0) }
-            guard !items.isEmpty else { return }
-            Task {
-                let count = await CopyProgressManager.shared.copyItems(items, to: currentPath)
-                ToastManager.shared.show("Copied \(count) item(s)")
-                self.manager.refresh()
-            }
+                .compactMap { FileItem.fromLocal($0) }
+            self.manager.transferItems(items, to: currentPath)
         }
 
         collectWebURLs(from: providers) { webURLs in

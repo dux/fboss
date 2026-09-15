@@ -23,6 +23,7 @@ extension FileExplorerManager {
     /// or select an item). A generation token discards stale async loads so rapid
     /// navigation only ever shows the newest folder.
     func loadContents(completion: (() -> Void)? = nil) {
+        directorySizeTask?.cancel()
         loadGeneration &+= 1
         let generation = loadGeneration
         let path = currentPath
@@ -181,27 +182,24 @@ extension FileExplorerManager {
 
     // MARK: - Folder sizes for Size sort
 
-    /// Listers report 0 for local directories, so Size mode fills in real
-    /// recursive sizes (through FolderSizeCache) off-main and re-sorts once
-    /// known. A stale generation only wastes the scan; the cache still fills.
+    /// Cancel obsolete scans and publish only totals for the current listing.
     private func refreshDirectorySizesIfSortingBySize() {
         guard sortMode == .size, currentPath.isFileURL, !directories.isEmpty else { return }
         let generation = loadGeneration
         let dirURLs = directories.map(\.url)
-        Task.detached(priority: .utility) { [weak self] in
+        directorySizeTask = Task { [weak self] in
             var sizes: [String: Int64] = [:]
             for url in dirURLs {
-                let size: UInt64
-                if let cached = FolderSizeCache.shared.getCachedSize(for: url) {
-                    size = cached
-                } else {
-                    size = Self.recursiveFolderSize(at: url)
-                    FolderSizeCache.shared.setCachedSize(for: url, size: size)
+                do {
+                    sizes[url.path] = try await FolderSizeCalculator.measure(url).bytes
+                } catch is CancellationError {
+                    return
+                } catch {
+                    ToastManager.shared.showError("Could not calculate \(url.lastPathComponent): \(error.localizedDescription)")
                 }
-                sizes[url.path] = Int64(clamping: size)
             }
-            let computed = sizes
-            await MainActor.run { self?.applyDirectorySizes(computed, generation: generation) }
+            guard !Task.isCancelled else { return }
+            self?.applyDirectorySizes(sizes, generation: generation)
         }
     }
 
@@ -219,15 +217,4 @@ extension FileExplorerManager {
         }
     }
 
-    nonisolated private static func recursiveFolderSize(at url: URL) -> UInt64 {
-        var total: UInt64 = 0
-        if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey], options: []) {
-            for case let fileURL as URL in enumerator {
-                if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                    total += UInt64(size)
-                }
-            }
-        }
-        return total
-    }
 }

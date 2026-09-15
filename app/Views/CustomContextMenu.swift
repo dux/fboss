@@ -226,42 +226,16 @@ private struct CustomContextMenuContent: View {
             return pinnedFolderMenuItems(pinnedIndex: pinnedIndex)
         }
         var items: [MenuItem] = []
-        if isDirectory && isLocal && !selection.isEmpty {
-            // Local items copy/move on disk; iPhone items in the selection
-            // download over the wire in the same action.
+        if isDirectory && itemCaps.contains(.write) && !selection.isEmpty {
             let count = selection.count
-            items.append(MenuItem(icon: "doc.on.doc", label: "Copy \(count) here", isDestructive: false, isColor: false, tagColor: nil, isTagged: false, action: act { [url] in
-                let localPairs = SelectionManager.shared.localItems.compactMap { item in
-                    item.localURL.map { (name: item.name, url: $0) }
-                }
-                Task {
-                    let downloaded = await SelectionManager.shared.downloadIPhoneItems(to: url)
-                    SelectionManager.shared.clear()
-                    let copied = await CopyProgressManager.shared.copyItems(localPairs, to: url)
-                    ToastManager.shared.show("Copied \(copied + downloaded) item(s)")
-                    manager.refresh()
-                }
-            }))
-            items.append(MenuItem(icon: "folder", label: "Move \(count) here", isDestructive: false, isColor: false, tagColor: nil, isTagged: false, action: act { [url] in
-                let localPairs = SelectionManager.shared.localItems.compactMap { item in
-                    item.localURL.map { (name: item.name, url: $0) }
-                }
-                Task {
-                    let downloaded = await SelectionManager.shared.downloadIPhoneItems(to: url, move: true)
-                    SelectionManager.shared.clear()
-                    let moved = await SelectionManager.shared.moveItems(localPairs, to: url)
-                    ToastManager.shared.show("Moved \(moved + downloaded) item(s)")
-                    manager.refresh()
-                }
-            }))
-        }
-        if isDirectory && !isLocal && itemCaps.contains(.write) && !selection.localItems.isEmpty {
-            let count = selection.localItems.count
-            items.append(MenuItem(icon: "square.and.arrow.up", label: "Upload \(count) here", isDestructive: false, isColor: false, tagColor: nil, isTagged: false, action: act { [url] in
-                let localURLs = SelectionManager.shared.localItems.compactMap { $0.localURL }
-                SelectionManager.shared.clear()
-                manager.uploadItems(localURLs, to: url)
-            }))
+            items.append(MenuItem(icon: "doc.on.doc", label: "Copy \(count) here", isDestructive: false,
+                                  isColor: false, tagColor: nil, isTagged: false, action: act { [url] in
+                manager.transferItems(to: url)
+                                  }))
+            items.append(MenuItem(icon: "folder", label: "Move \(count) here", isDestructive: false,
+                                  isColor: false, tagColor: nil, isTagged: false, action: act { [url] in
+                manager.transferItems(to: url, move: true)
+                                  }))
         }
         // FileDetailsView stats the path with the local FileManager, so remote
         // URLs would show a bogus location and never finish "Calculating..."

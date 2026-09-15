@@ -48,7 +48,7 @@ The **central @MainActor ObservableObject**. Owns all navigation, file listing, 
 - `allItems: [CachedFileInfo]` -- computed `directories + files`
 - `selectedItem: URL?`, `selectedIndex: Int` -- single item cursor
 - `previewStack`, `previewForwardStack: [PreviewTarget]` -- files reached by clicking links inside a preview; `previewURL` is what the right pane actually renders
-- `sortMode: SortMode` (.type, .name, .modified, .size) -- triggers `loadContents()` on change; in Size mode local folder sizes are filled in asynchronously via `FolderSizeCache`
+- `sortMode: SortMode` (.type, .name, .modified, .size) -- triggers `loadContents()` on change; in Size mode local folder sizes are measured asynchronously via `FolderSizeCalculator`
 - `currentPane: MainPaneType` -- `.browser`, `.selection`, `.colorTag(TagColor)`
 - `browserViewMode: BrowserViewMode` -- `.files`, `.selected`
 - `showHidden`, `hiddenCount`, `hasImages`
@@ -77,7 +77,8 @@ Everything else lives in extension files next to it (Swift allows methods, compu
 
 ### FileExplorerManagerLoading (extension, `Models/FileExplorerManagerLoading.swift`)
 The directory listing pipeline: `loadContents(completion:)` / `loadContents(selecting:)`, `applyLoadResult`, and the `nonisolated` pure helpers `buildListing` / `sortItems` that run the hidden-file policy, dir/file split and sort off the main actor.
-Also the "Folder sizes for Size sort" block -- `refreshDirectorySizesIfSortingBySize()`, `applyDirectorySizes()`, `recursiveFolderSize()` -- which fills real recursive sizes in asynchronously via `FolderSizeCache` and re-sorts.
+The size-sort block uses `FolderSizeCalculator` for fresh recursive totals and cancels obsolete scans when the listing changes.
+Directory mtimes are not used as cache validators because descendant edits do not reliably change them.
 `loadGeneration` stays in the class body (stored) and is internal so this extension can bump/compare it to discard stale async loads.
 
 ### FileExplorerManagerOpen (extension, `Models/FileExplorerManagerOpen.swift`)
@@ -89,14 +90,33 @@ File operation methods: `createNewFolder()`, `createNewFile()`, `duplicateFile()
 ### FileExplorerManagerSearch (extension, `Models/FileExplorerManagerSearch.swift`)
 Search methods: `startSearch()`, `startSearch(withQuery:)`, `cancelSearch()`, `performSearch()`, `toggleSearchExtension()`, `rescanSearchIndexIfActive()`. Entry points are gated on the source's `.recursiveSearch` capability (remote backends get a toast instead of an empty pane). List cursor navigation: `listSelectNext()`, `listSelectPrevious()`, `listActivateItem()`.
 
-### FileItem & SelectionManager (`Models/FileItem.swift`)
+### FileItem and SelectionManager (`Models/FileItem.swift`, `Models/SelectionManager.swift`)
 * `FileItem` is a unified file representation with `id`, `name`, `path`, `isDirectory`, `size`, `modifiedDate`, and a local, iPhone, or generic remote source.
 * `SelectionManager` is a **singleton** managing a `Set<FileItem>`.
   It tracks `version: Int` for change detection.
-  It supports add/remove/toggle/clear, move/copy/delete, and iPhone download/upload.
+  It owns add/remove/toggle/clear and selection identity only.
+  Its initializer is usable by isolated tests.
 
 ### CachedFileInfo (in FileExplorerManager.swift)
 Lightweight struct: `url`, `isDirectory`, `size`, `modDate`, `isHidden`, `displayName`. Display model for directory listings.
+
+### Transfers
+
+`FileExplorerManagerTransfers` is the common entry point for selection buttons, keyboard shortcuts, context menus, and dropped files.
+`SelectionTransfer` receives its selection store and source resolver through its initializer, and removes only successfully completed items from selection.
+`FileTransfer` walks remote folders through `stat` and `list`, including nested and empty directories, and downloads each file through the backend's `downloadFile` primitive.
+Local downloads stage into a unique directory on the destination volume, verify file sizes, and move into a free numbered name only after the complete tree succeeds.
+A copy skips a top-level file when the destination already holds a regular file with the same name and size; folders and moves keep the numbered-copy policy.
+Remote uploads stage into a unique remote folder before moving into their final name.
+Moves never apply copy exclusions and delete the source only after the destination completes; read, write, cancellation, or deletion failures retain the selection.
+`StreamTransfer` checks read errors and retries short writes for AFC transfers.
+
+### Persistence
+
+Settings, folder icons, and color tags share `DebouncedJSONWriter`.
+Each store accepts a storage URL so tests never modify the user's preferences.
+The writer encodes snapshots on a worker actor and writes atomically after a 300 ms debounce.
+The application delegate flushes pending writes before allowing termination and keeps the app open if a save fails.
 
 ### AppSettings (`Models/AppSettings.swift`)
 **Singleton** persisting to `~/.config/dux-file-explorer/settings.json`. Debounced save (300ms). Key settings: font sizes, pane widths, window frame, `preferredApps`, `recentlyUsedApps`, `flatFolders`, `omdbAPIKey`.
@@ -114,7 +134,7 @@ All `@MainActor`:
 - **iPhoneManager** -- iOS device detection/scanning; context-explicit AFC transfer ops used by SelectionManager and iPhoneFileSource (`iPhoneManagerFileOps.swift`). Browsing itself goes through iPhoneFileSource + the main browser pane
 - **AppSearcher** -- finds apps that can open a file type
 - **AppUninstaller** -- finds leftover app data for cleanup
-- **FolderSizeCache** -- mtime-validated folder size cache (own queue); feeds real directory sizes to the Size sort mode
+- **FolderSizeCalculator** -- a stateless, cancellable recursive measurement shared by size sorting, file details, and DMG previews; it reports failures instead of caching partial totals
 - **MountsManager** -- SSH/SMB favorites, connect dialog, server URL normalization
 - **OperationManager** -- cancellable background operation runner with the running indicator
 - **ToastManager** -- toast notification show/dismiss
@@ -251,7 +271,14 @@ app/
     FileExplorerManagerOpen.swift     -- Open item, archive extract/decompress
     FileExplorerManagerFileOps.swift  -- File operations extension
     FileExplorerManagerSearch.swift   -- Search & list cursor extension
-    FileItem.swift                   -- FileItem, SelectionManager, uniqueLocalDestination helper
+    FileItem.swift                   -- File identity and destination naming helpers
+    SelectionManager.swift           -- Selection storage
+    SelectionTransfer.swift          -- Per-item transfer results and selection updates
+    FileTransfer.swift               -- Recursive transfers, staging, collision policy
+    FileExplorerManagerTransfers.swift -- Shared UI transfer entry points
+    StreamTransfer.swift             -- Checked stream reads and partial writes
+    BlockingFileIO.swift             -- Cancellable boundary for blocking file/C operations
+    FilteredFileCopy.swift           -- Local copy policy
     AppSettings.swift                -- Persisted settings singleton
     ShortcutsManager.swift           -- Sidebar built-ins + pinned folders
     ColorTagManager.swift            -- Color label system
@@ -269,7 +296,8 @@ app/
     iPhoneManagerFileOps.swift       -- Context-explicit iPhone transfer ops
     AppSearcher.swift                -- App discovery for "Open with"
     AppUninstaller.swift             -- App cleanup/uninstall
-    FolderSizeCache.swift            -- Cached folder sizes (feeds Size sort)
+    FolderSizeCalculator.swift       -- Fresh recursive sizes for sorting and previews
+    DebouncedJSONWriter.swift         -- Atomic serialized persistence with flush
     AppUpdater.swift                 -- GitHub release update checker
   Views/
     MainContentView.swift            -- Main layout, ActionButtonBar, dialogs
@@ -280,9 +308,9 @@ app/
     FileRowMouseArea.swift           -- AppKit mouse handling for rows
     CustomContextMenu.swift          -- Right-click context menu system
     HelperViews.swift                -- FileDetailsView, EmptyFolderView, rename field
-    SharedComponents.swift           -- Drop helpers, calculateFileSize, webloc writer
+    SharedComponents.swift           -- Drop helpers, text reader, webloc writer
     TextStyles.swift                 -- .textStyle() modifier system
-    ToastView.swift                  -- Toast notification, CopyProgressManager
+    ToastView.swift                  -- Toast and cancellable operation indicator
     SettingsView.swift               -- Settings window
     ColorTagView.swift               -- Color tag file list
     EmojiPickerView.swift            -- Emoji picker for folder icons

@@ -74,12 +74,12 @@ struct ActionsPane: View {
         isLocalTarget && !isDirectory && FileExtensions.archives.contains(targetURL.pathExtension.lowercased())
     }
 
-    private var isRemoteFile: Bool {
-        !isLocalTarget && !isDirectory
+    private var canDownloadTarget: Bool {
+        !isLocalTarget && !targetURL.path.isEmpty && targetURL.path != "/"
     }
 
     private var hasActionButtons: Bool {
-        isAppBundle || isImageFile || isOfficeFile || isArchiveFile || isExecutableFile || isRemoteFile || gitRepo.gitRepoInfo != nil || npmPackage.npmPackageInfo != nil
+        isAppBundle || isImageFile || isOfficeFile || isArchiveFile || isExecutableFile || canDownloadTarget || gitRepo.gitRepoInfo != nil || npmPackage.npmPackageInfo != nil
     }
 
     /// Open the target with a specific app; remote targets download to the
@@ -103,16 +103,10 @@ struct ActionsPane: View {
 
     private func downloadTarget() {
         let downloads = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
-        let source = SourceRegistry.shared.source(for: targetURL)
-        let remote = targetURL
-        Task {
-            do {
-                try await source.download(remote, toDirectory: downloads)
-                ToastManager.shared.show("Downloaded to Downloads")
-            } catch {
-                ToastManager.shared.showError(error.localizedDescription)
-            }
-        }
+        let info = manager.cachedInfo(for: targetURL) ?? CachedFileInfo(
+            url: targetURL, isDirectory: isDirectory, size: 0, modDate: nil, isHidden: false)
+        guard let item = FileItem.from(info: info) else { return }
+        manager.transferItems([item], to: downloads)
     }
 
     @ViewBuilder
@@ -176,7 +170,7 @@ struct ActionsPane: View {
                         showExecuteSheet = true
                     }
                 }
-                if isRemoteFile {
+                if canDownloadTarget {
                     let downloadIdx = paneItems.firstIndex(where: { $0.id == "download" }) ?? -1
                     ActionButton(icon: "arrow.down.circle", title: "Download to Downloads", color: .blue,
                                  flatIndex: downloadIdx, manager: manager) {
@@ -274,7 +268,7 @@ struct ActionsPane: View {
                 self.showExecuteSheet = true
             })
         }
-        if isRemoteFile {
+        if canDownloadTarget {
             items.append(RightPaneItem(id: "download", title: "Download to Downloads") {
                 self.downloadTarget()
             })
@@ -854,7 +848,6 @@ struct SelectionSection: View {
 
     private var selectedItems: [FileItem] { selection.sortedItems }
     private var localItems: [FileItem] { selection.localItems }
-    private var iPhoneItems: [FileItem] { selection.iPhoneItems }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -862,50 +855,17 @@ struct SelectionSection: View {
 
             // Action buttons row
             HStack(spacing: 5) {
-                if !localItems.isEmpty {
+                if manager.currentSource.capabilities(at: manager.currentPath).contains(.write) {
                     SelectionBarButton(title: "Copy to", icon: "doc.on.doc", color: .blue, shortcut: "Copy here (Cmd+Shift+C)") {
-                        let items = selection.localItems.compactMap { item in
-                            item.localURL.map { (name: item.name, url: $0) }
-                        }
-                        let dest = manager.currentPath
-                        selection.clear()
-                        Task {
-                            let count = await CopyProgressManager.shared.copyItems(items, to: dest)
-                            ToastManager.shared.show("Copied \(count) item(s)")
-                            manager.refresh()
-                        }
+                        manager.transferItems()
                     }
                     SelectionBarButton(title: "Move to", icon: "folder", color: .orange, shortcut: "Move here (Cmd+Shift+V)") {
-                        let items = selection.localItems.compactMap { item in
-                            item.localURL.map { (name: item.name, url: $0) }
-                        }
-                        let dest = manager.currentPath
-                        selection.clear()
-                        Task {
-                            let count = await selection.moveItems(items, to: dest)
-                            ToastManager.shared.show("Moved \(count) file(s)")
-                            manager.refresh()
-                        }
-                    }
-                    SelectionBarButton(title: "Trash", icon: "trash", color: .red) {
-                        let items = selection.localItems
-                        selection.clear()
-                        Task {
-                            let trashed = await selection.trashItems(items)
-                            ToastManager.shared.show("Trashed \(trashed) file(s)")
-                            manager.refresh()
-                        }
+                        manager.transferItems(move: true)
                     }
                 }
-
-                if !iPhoneItems.isEmpty {
-                    SelectionBarButton(title: "Download", icon: "arrow.down.doc", color: .pink) {
-                        Task {
-                            let count = await selection.downloadIPhoneItems(to: manager.currentPath, move: false)
-                            ToastManager.shared.show("Downloaded \(count) file(s)")
-                            for item in iPhoneItems { selection.remove(item) }
-                            manager.refresh()
-                        }
+                if !localItems.isEmpty {
+                    SelectionBarButton(title: "Trash", icon: "trash", color: .red) {
+                        manager.trashSelection()
                     }
                 }
 

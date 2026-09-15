@@ -210,8 +210,8 @@ final class LocalFileSource: FileSystemSource {
         url
     }
 
-    func download(_ url: URL, toDirectory dest: URL) async throws {
-        try await upload(localURL: url, toDirectory: dest)
+    func downloadFile(_ url: URL, to localURL: URL) async throws {
+        try await BlockingFileIO.run { try FileManager.default.copyItem(at: url, to: localURL) }
     }
 
     func upload(localURL: URL, toDirectory dest: URL) async throws {
@@ -236,7 +236,7 @@ final class LocalFileSource: FileSystemSource {
     }
 
     func delete(_ url: URL) async throws {
-        try Self.trashSync(url)
+        try await BlockingFileIO.run { try Self.trashSync(url) }
     }
 
     func setHidden(_ url: URL, hidden: Bool) async throws {
