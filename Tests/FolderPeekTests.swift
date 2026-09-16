@@ -74,7 +74,7 @@ struct FolderPeekTests {
         for _ in 0..<100 where !model.isShowing {
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(model.peek?.entries.count == 3)
+        #expect(model.levels.first?.peek?.entries.count == 3)
 
         // A stale exit from another row must not close the panel
         model.leave(folder: workspace.url.appendingPathComponent("dir-0"))
@@ -83,7 +83,7 @@ struct FolderPeekTests {
 
         // Crossing onto the panel within the grace keeps it open
         model.leave(folder: workspace.url)
-        model.panelHover(true)
+        model.panelHover(level: 0, inside: true)
         try await Task.sleep(for: .milliseconds(60))
         #expect(model.isShowing)
 
@@ -91,10 +91,54 @@ struct FolderPeekTests {
         model.hover(folder: workspace.url.appendingPathComponent("dir-0"), showHidden: false, sortMode: .name)
         model.leave(folder: workspace.url.appendingPathComponent("dir-0"))
         try await Task.sleep(for: .milliseconds(60))
-        #expect(model.peek?.folder == workspace.url)
+        #expect(model.shownFolder == workspace.url)
 
         // Leaving the panel closes it after the grace
-        model.panelHover(false)
+        model.panelHover(level: 0, inside: false)
+        try await Task.sleep(for: .milliseconds(60))
+        #expect(!model.isShowing)
+    }
+
+    @Test("hovering a folder entry cascades and a file entry closes deeper levels")
+    @MainActor
+    func cascade() async throws {
+        let workspace = try makeTree(files: 1, folders: 1, hidden: false)
+        let child = workspace.url.appendingPathComponent("dir-0")
+        try Data().write(to: child.appendingPathComponent("inner.txt"))
+        let model = FolderPeekModel(hoverDelay: .milliseconds(20), leaveGrace: .milliseconds(20))
+        model.hover(folder: workspace.url, showHidden: false, sortMode: .name)
+        for _ in 0..<100 where !model.isShowing {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let root = try #require(model.levels.first?.peek)
+        let folderEntry = try #require(root.entries.first { $0.isDirectory })
+        let fileEntry = try #require(root.entries.first { !$0.isDirectory })
+
+        model.panelHover(level: 0, inside: true)
+        model.hoverEntry(folderEntry, in: 0, showHidden: false, sortMode: .name)
+        for _ in 0..<100 where model.levels.count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(model.levels.count == 2)
+        #expect(model.levels[1].folder == child)
+        #expect(model.levels[1].peek?.entries.map(\.name) == ["inner.txt"])
+
+        // Moving into the child and back to its own entry keeps it
+        model.panelHover(level: 1, inside: true)
+        model.panelHover(level: 0, inside: false)
+        model.panelHover(level: 0, inside: true)
+        model.panelHover(level: 1, inside: false)
+        model.hoverEntry(folderEntry, in: 0, showHidden: false, sortMode: .name)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(model.levels.count == 2)
+
+        // A file entry in the parent closes the child after the delay
+        model.hoverEntry(fileEntry, in: 0, showHidden: false, sortMode: .name)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(model.levels.count == 1)
+
+        // Leaving the last panel closes everything
+        model.panelHover(level: 0, inside: false)
         try await Task.sleep(for: .milliseconds(60))
         #expect(!model.isShowing)
     }
@@ -115,7 +159,7 @@ struct FolderPeekTests {
     func staleEnterIgnored() async throws {
         let workspace = try makeTree(files: 1, folders: 0, hidden: false)
         let model = FolderPeekModel(hoverDelay: .milliseconds(10))
-        model.panelHover(true)
+        model.panelHover(level: 0, inside: true)
         model.hover(folder: workspace.url, showHidden: false, sortMode: .name)
         for _ in 0..<100 where !model.isShowing {
             try await Task.sleep(for: .milliseconds(10))
@@ -128,7 +172,7 @@ struct FolderPeekTests {
     func panelShield() async throws {
         let workspace = try makeTree(files: 1, folders: 0, hidden: false)
         let model = FolderPeekModel(hoverDelay: .milliseconds(10))
-        model.panelFrame = CGRect(x: 100, y: 100, width: 340, height: 200)
+        model.panelFrame(CGRect(x: 100, y: 100, width: 340, height: 200), at: 0)
         #expect(!model.panelContains(CGPoint(x: 150, y: 150)))
         model.hover(folder: workspace.url, showHidden: false, sortMode: .name)
         for _ in 0..<100 where !model.isShowing {

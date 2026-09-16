@@ -167,37 +167,68 @@ struct FileTreeView: View {
         }
     }
 
-    /// Panel starts halfway across the tree (300 pt at most) and 40 pt above the
-    /// hovered row, so the cursor reaches it by moving right along the row. It
-    /// shifts up when it would run past the bottom of the tree, and rows are
-    /// capped to what fits so the fold count grows instead of the panel being cut off.
+    /// Root panel starts halfway across the tree (300 pt at most) and 40 pt above
+    /// the hovered row, so the cursor reaches it by moving right along the row.
+    /// Each deeper panel hangs off the entry row that opened it, overlapping its
+    /// parent a little, and flips to the parent's left when out of room.
+    /// Panels shift up when they would run past the bottom of the tree, and rows
+    /// are capped to what fits so the fold count grows instead of a panel being cut off.
     @ViewBuilder
     private func peekOverlay(anchor: Anchor<CGRect>?) -> some View {
         if peekModel.isShowing, let anchor {
             GeometryReader { geo in
-                let row = geo[anchor]   // content bounds, excludes the row's padding
-                let available = geo.size.height - FolderPeekPanel.verticalPadding * 2 - FolderPeekPanel.titleHeight
-                let maxRows = Int(available / FolderPeekPanel.rowHeight)
-                let layout = FolderPeekPanel.Layout(
-                    peek: peekModel.peek,
-                    failure: peekModel.failure,
-                    maxRows: maxRows,
-                    title: peekModel.shownFolder?.lastPathComponent
-                )
-                let x = min(geo.size.width * 0.5, 300, max(0, geo.size.width - FolderPeekPanel.width - 8))
-                let preferred = max(0, row.minY - 40)
-                let y = preferred + layout.height <= geo.size.height ? preferred : max(0, geo.size.height - layout.height)
-                FolderPeekPanel(
-                    layout: layout,
-                    onSelect: { entry in
-                        if let folder = peekModel.peek?.folder { openPeekEntry(entry, in: folder) }
-                    },
-                    onHover: { peekModel.panelHover($0) },
-                    onFrame: { peekModel.panelFrame = $0 }
-                )
-                .offset(x: x, y: y)
+                let placed = placePeekPanels(rootRow: geo[anchor], in: geo.size)
+                ForEach(Array(placed.enumerated()), id: \.offset) { level, item in
+                    FolderPeekPanel(
+                        layout: item.layout,
+                        onSelect: { entry in openPeekEntry(entry, in: item.folder) },
+                        onOpenFolder: {
+                            peekModel.dismiss()
+                            manager.navigateTo(item.folder)
+                        },
+                        onHover: { peekModel.panelHover(level: level, inside: $0) },
+                        onHoverEntry: { entry in
+                            peekModel.hoverEntry(entry, in: level, showHidden: manager.showHidden, sortMode: manager.sortMode)
+                        },
+                        onFrame: { peekModel.panelFrame($0, at: level) }
+                    )
+                    .offset(x: item.frame.minX, y: item.frame.minY)
+                }
             }
         }
+    }
+
+    private struct PlacedPeek {
+        let folder: URL
+        let layout: FolderPeekPanel.Layout
+        let frame: CGRect
+    }
+
+    /// `rootRow` is the hovered row's content bounds (excludes the row's padding).
+    private func placePeekPanels(rootRow: CGRect, in size: CGSize) -> [PlacedPeek] {
+        let width = FolderPeekPanel.width
+        let rowHeight = FolderPeekPanel.rowHeight
+        let available = size.height - FolderPeekPanel.verticalPadding * 2 - FolderPeekPanel.titleHeight
+        let maxRows = Int(available / rowHeight)
+        var placed: [PlacedPeek] = []
+        for level in peekModel.levels {
+            let layout = FolderPeekPanel.Layout(peek: level.peek, failure: level.failure, maxRows: maxRows, title: level.folder.lastPathComponent)
+            var x: CGFloat
+            var y: CGFloat
+            if let parent = placed.last {
+                guard let index = parent.layout.rows.firstIndex(where: { $0.url == level.folder }) else { break }
+                let entryTop = parent.frame.minY + FolderPeekPanel.verticalPadding + parent.layout.titleHeight + CGFloat(index) * rowHeight
+                x = parent.frame.maxX - 24
+                if x + width > size.width - 8 { x = max(0, parent.frame.minX - width + 24) }
+                y = entryTop - 8
+            } else {
+                x = min(size.width * 0.5, 300, max(0, size.width - width - 8))
+                y = max(0, rootRow.minY - 40)
+            }
+            if y + layout.height > size.height { y = max(0, size.height - layout.height) }
+            placed.append(PlacedPeek(folder: level.folder, layout: layout, frame: CGRect(x: x, y: y, width: width, height: layout.height)))
+        }
+        return placed
     }
 
     /// A clicked folder opens directly; a clicked file enters the peeked folder

@@ -197,13 +197,14 @@ Primary file listing. Two modes via `settings.flatFolders`:
 
 ### Folder hover peek
 Resting the mouse on a folder row for 400 ms floats a panel with the folder's first 20 entries and a "... N more" line (`Views/FolderPeekPanel.swift`).
-Clicking an entry navigates into the peeked folder with the cursor on that entry.
-`FolderPeekModel` (`Models/FolderPeekModel.swift`) is owned as a `@StateObject` by `FileTreeView`, so it survives `LazyVStack` row recycling.
+Resting on a folder entry inside a panel opens the next panel off that entry, cascading like submenus; hovering another entry in a parent closes the levels below it.
+Clicking a folder entry opens that folder; clicking a file enters its folder with the cursor on the file; clicking a panel's title opens the peeked folder itself.
+`FolderPeekModel` (`Models/FolderPeekModel.swift`) keeps the cascade as a stack of levels and is owned as a `@StateObject` by `FileTreeView`, so it survives `LazyVStack` row recycling.
 The row of the folder on show (`shownFolder`, not the hovered row) publishes its content bounds through an `anchorPreference`, and the tree's `overlayPreferenceValue` resolves it to place the panel -- the same idiom the context menu uses for its colour submenu.
 `FolderPeek.load` (`Models/FolderPeek.swift`) lists through the folder's `FileSystemSource` and reuses `FileExplorerManager.buildListing`, so the page honours the browser's hidden policy and sort mode on every backend.
 The panel is clamped inside the tree, folds rows that do not fit vertically, and is dismissed on mouse down, navigation and when the context menu opens.
 
-The panel starts halfway across the tree (300 pt at most) and 40 pt above the hovered row, so the cursor reaches it by moving right along the row.
+The root panel starts halfway across the tree (300 pt at most) and 40 pt above the hovered row, so the cursor reaches it by moving right along the row; each deeper panel hangs off the entry row that opened it, overlapping its parent by 24 pt, and flips to the parent's left when out of room.
 
 Row hover comes from `FileRowMouseArea`, not SwiftUI's `.onHover`: that AppKit overlay sits above the row content and swallows SwiftUI hover.
 The panel likewise owns its cursor through `Views/FolderPeekMouseArea.swift` (hover, row highlight and clicks, all in panel-local coordinates) rather than SwiftUI gestures.

@@ -58,15 +58,21 @@ struct FolderPeekPanel: View {
 
     let layout: Layout
     let onSelect: (CachedFileInfo) -> Void
+    /// The title was clicked: open the peeked folder itself.
+    let onOpenFolder: () -> Void
     let onHover: (Bool) -> Void
+    /// The entry under the cursor changed; `nil` for the title, footer or none.
+    let onHoverEntry: (CachedFileInfo?) -> Void
     let onFrame: (CGRect) -> Void
     @State private var hoveredIndex: Int?
+    @State private var titleHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
             if let title = layout.title {
                 Text(title)
                     .textStyle(.title)
+                    .foregroundColor(titleHovered ? .primary : .secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.horizontal, 14)
@@ -96,14 +102,27 @@ struct FolderPeekPanel: View {
         )
         .overlay(FolderPeekMouseArea(
             onHover: { point in
-                hoveredIndex = point.flatMap(rowIndex(at:))
+                let index = point.flatMap(rowIndex(at:))
+                if index != hoveredIndex {
+                    hoveredIndex = index
+                    onHoverEntry(index.map { layout.rows[$0] })
+                }
+                titleHovered = point.map(isTitle(at:)) ?? false
                 onHover(point != nil)
             },
             onClick: { point in
-                if let index = rowIndex(at: point) { onSelect(layout.rows[index]) }
+                if isTitle(at: point) {
+                    onOpenFolder()
+                } else if let index = rowIndex(at: point) {
+                    onSelect(layout.rows[index])
+                }
             },
             onFrame: { onFrame($0) }
         ))
+    }
+
+    private func isTitle(at point: CGPoint) -> Bool {
+        layout.title != nil && point.y < Self.verticalPadding + Self.titleHeight
     }
 
     private func rowIndex(at point: CGPoint) -> Int? {
