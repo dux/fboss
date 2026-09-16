@@ -176,6 +176,7 @@ ContentView
 ### Folder navigation
 - **`navigateTo(_ url)`** -- validates path, saves selection memory, pushes history, sets `currentPath`, auto-selects sort mode (.modified for Downloads/Desktop, .name otherwise), calls `loadContents()`, restores selection.
 - **`navigateUp()`** -- stores current dir URL in parent's selection memory, calls `navigateTo(parent)`.
+- **`reveal(_ url, isDirectory:)`** -- switches to the browser pane, enters a folder directly or enters a file's folder with the cursor on the file. Used by the folder peek and by clicking a row in `ColorTagView`.
 - **`goBack()` / `goForward()`** -- moves `historyIndex` through history stack.
 
 ### Breadcrumbs
@@ -195,6 +196,8 @@ Primary file listing. Two modes via `settings.flatFolders`:
 
 **FileTreeRow:** icon + filename + color dots + date + size. Single click on dir: select then navigate (150ms). Click file: toggle selection. Double click: open. Drag: `NSItemProvider`. Right-click: custom context menu. Background: blue=selected, green=in selection.
 Hidden rows render at half opacity; gitignored rows mute only the icon and name (secondary text colour) so a selected ignored row keeps its full highlight.
+In tree mode `allItems` lists folders, then files, then every hidden or gitignored entry (`CachedFileInfo.isMuted`) in the same order, and `childRows` draws a thin rule at `mutedStartIndex`; "in line" mode keeps the plain order.
+Keyboard navigation and selection memory index into `allItems`, so the order lives in the manager rather than the view, and the manager re-syncs `selectedIndex` from `selectedItem` when `flatFolders` flips.
 
 ### Gitignore dimming
 `GitIgnore` (`Models/GitIgnore.swift`) is loaded once per listing in `loadContents` and `FolderPeek.load`, and `buildListing` stamps `CachedFileInfo.isIgnored` from it.

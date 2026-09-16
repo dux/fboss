@@ -65,10 +65,9 @@ struct ColorTagView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
+                        ForEach(files) { file in
                             ColorTagFileRow(
                                 file: file,
-                                index: index,
                                 color: color,
                                 manager: manager,
                                 tagManager: tagManager
@@ -84,7 +83,6 @@ struct ColorTagView: View {
 
 struct ColorTagFileRow: View {
     let file: TaggedFile
-    let index: Int
     let color: TagColor
     @ObservedObject var manager: FileExplorerManager
     @ObservedObject var tagManager: ColorTagManager
@@ -101,8 +99,7 @@ struct ColorTagFileRow: View {
         )
         .onTapGesture {
             guard file.exists else { return }
-            manager.listCursorIndex = index
-            manager.selectItem(at: -1, url: file.url)
+            manager.reveal(file.url, isDirectory: file.isDirectory)
         }
     }
 }

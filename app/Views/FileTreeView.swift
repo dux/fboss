@@ -76,18 +76,7 @@ struct FileTreeView: View {
                         if settings.flatFolders {
                             // Compact breadcrumb + flat list
                             FlatBreadcrumbRow(ancestors: ancestors, manager: manager)
-
-                            ForEach(Array(manager.allItems.enumerated()), id: \.element.id) { index, fileInfo in
-                                FileTreeRow(
-                                    fileInfo: fileInfo,
-                                    manager: manager,
-                                    peek: peekModel,
-                                    index: index,
-                                    depth: 1,
-                                    indentStep: indentStep
-                                )
-                                .id(fileInfo.id)
-                            }
+                            childRows(depth: 1)
                         } else {
                             // Ancestor rows
                             let ancestorList = ancestors
@@ -103,19 +92,7 @@ struct FileTreeView: View {
                                 )
                             }
 
-                            // Children rows
-                            let childDepth = ancestorList.count
-                            ForEach(Array(manager.allItems.enumerated()), id: \.element.id) { index, fileInfo in
-                                FileTreeRow(
-                                    fileInfo: fileInfo,
-                                    manager: manager,
-                                    peek: peekModel,
-                                    index: index,
-                                    depth: childDepth,
-                                    indentStep: indentStep
-                                )
-                                .id(fileInfo.id)
-                            }
+                            childRows(depth: ancestorList.count)
                         }
 
                     }
@@ -167,6 +144,32 @@ struct FileTreeView: View {
         }
     }
 
+    /// Children of the current folder; in tree mode hidden and gitignored
+    /// entries sit last, behind a thin rule.
+    @ViewBuilder
+    private func childRows(depth: Int) -> some View {
+        let mutedStart = manager.mutedStartIndex
+        ForEach(Array(manager.allItems.enumerated()), id: \.element.id) { index, fileInfo in
+            if index == mutedStart {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(height: 1)
+                    .padding(.leading, CGFloat(depth) * indentStep + 12)
+                    .padding(.trailing, 12)
+                    .padding(.vertical, 4)
+            }
+            FileTreeRow(
+                fileInfo: fileInfo,
+                manager: manager,
+                peek: peekModel,
+                index: index,
+                depth: depth,
+                indentStep: indentStep
+            )
+            .id(fileInfo.id)
+        }
+    }
+
     /// Root panel starts halfway across the tree (300 pt at most) and 40 pt above
     /// the hovered row, so the cursor reaches it by moving right along the row.
     /// Each deeper panel hangs off the entry row that opened it, overlapping its
@@ -181,7 +184,7 @@ struct FileTreeView: View {
                 ForEach(Array(placed.enumerated()), id: \.offset) { level, item in
                     FolderPeekPanel(
                         layout: item.layout,
-                        onSelect: { entry in openPeekEntry(entry, in: item.folder) },
+                        onSelect: { entry in openPeekEntry(entry) },
                         onOpenFolder: {
                             peekModel.dismiss()
                             manager.navigateTo(item.folder)
@@ -231,20 +234,9 @@ struct FileTreeView: View {
         return placed
     }
 
-    /// A clicked folder opens directly; a clicked file enters the peeked folder
-    /// with the cursor on it, so it previews right away.
-    private func openPeekEntry(_ entry: CachedFileInfo, in folder: URL) {
+    private func openPeekEntry(_ entry: CachedFileInfo) {
         peekModel.dismiss()
-        if entry.isDirectory {
-            manager.navigateTo(entry.url)
-            return
-        }
-        manager.navigateTo(folder) {
-            let index = manager.allItems.firstIndex { $0.url == entry.url } ?? -1
-            manager.selectItem(at: index, url: entry.url)
-            manager.sidebarFocused = false
-            manager.rightPaneFocused = false
-        }
+        manager.reveal(entry.url, isDirectory: entry.isDirectory)
     }
 
     private func handleDrop(providers: [NSItemProvider]) {

@@ -69,6 +69,31 @@ struct CachedFileInfoTests {
         #expect(manager.allItems[0].isDirectory == true)
         #expect(manager.allItems[1].isDirectory == false)
     }
+
+    @Test("hidden and gitignored entries come last, keeping their order")
+    @MainActor func mutedItemsLast() {
+        let manager = makeTestManager()
+        manager.directories = [
+            CachedFileInfo(url: URL(fileURLWithPath: "/tmp/.git"), isDirectory: true, size: 0, modDate: nil, isHidden: true),
+            CachedFileInfo(url: URL(fileURLWithPath: "/tmp/app"), isDirectory: true, size: 0, modDate: nil, isHidden: false),
+            CachedFileInfo(url: URL(fileURLWithPath: "/tmp/build"), isDirectory: true, size: 0, modDate: nil, isHidden: false, isIgnored: true)
+        ]
+        manager.files = [
+            CachedFileInfo(url: URL(fileURLWithPath: "/tmp/a.log"), isDirectory: false, size: 1, modDate: nil, isHidden: false, isIgnored: true),
+            CachedFileInfo(url: URL(fileURLWithPath: "/tmp/main.swift"), isDirectory: false, size: 1, modDate: nil, isHidden: false)
+        ]
+        #expect(manager.allItems.map(\.name) == ["app", "main.swift", ".git", "build", "a.log"])
+        #expect(manager.mutedStartIndex == 2)
+
+        // "in line" mode keeps the plain order and the cursor follows its item
+        manager.selectItem(at: 3, url: URL(fileURLWithPath: "/tmp/build"))
+        manager.settings.flatFolders = true
+        #expect(manager.allItems.map(\.name) == [".git", "app", "build", "a.log", "main.swift"])
+        #expect(manager.mutedStartIndex == nil)
+        #expect(manager.selectedIndex == 2)
+        manager.settings.flatFolders = false
+        #expect(manager.selectedIndex == 3)
+    }
 }
 
 // MARK: - Enum Tests
@@ -436,6 +461,23 @@ struct NavigationTests {
         manager.navigateTo(target)
         manager.navigateUp()
         #expect(manager.currentPath.path == home.standardizedFileURL.path)
+    }
+
+    @Test("reveal enters a file's folder with the cursor on it and leaves the tag pane")
+    @MainActor func revealFile() throws {
+        let manager = makeTestManager()
+        let workspace = try TestWorkspace()
+        let folder = workspace.url
+        let file = folder.appendingPathComponent("note.txt")
+        try Data().write(to: file)
+
+        manager.currentPane = .colorTag(.red)
+        manager.reveal(file, isDirectory: false)
+
+        #expect(manager.currentPane == .browser)
+        #expect(manager.currentPath.path == folder.standardizedFileURL.path)
+        #expect(manager.selectedItem?.path == file.standardizedFileURL.path)
+        #expect(manager.selectedIndex == 0)
     }
 
     @Test("clearSelection resets selected state")

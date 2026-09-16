@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 enum MainPaneType: Equatable {
     case browser
@@ -46,6 +47,8 @@ struct CachedFileInfo: Identifiable, Equatable {
 
     var id: String { url.absoluteString }
     var name: String { displayName ?? url.lastPathComponent }
+    /// Hidden or gitignored: drawn dimmed and listed after everything else
+    var isMuted: Bool { isHidden || isIgnored }
 }
 
 @MainActor
@@ -138,8 +141,33 @@ class FileExplorerManager: ObservableObject {
         SourceRegistry.shared.source(for: currentPath)
     }
 
+    /// Folders, then files. In tree mode hidden and gitignored entries move to
+    /// the end in the same order; "in line" mode keeps them in place.
     var allItems: [CachedFileInfo] {
-        directories + files
+        orderedItems(flat: settings.flatFolders)
+    }
+
+    /// Index of the first muted row, where the tree draws its separator.
+    var mutedStartIndex: Int? {
+        settings.flatFolders ? nil : allItems.firstIndex(where: \.isMuted)
+    }
+
+    private func orderedItems(flat: Bool) -> [CachedFileInfo] {
+        let all = directories + files
+        if flat { return all }
+        let muted = all.filter(\.isMuted)
+        return muted.isEmpty ? all : all.filter { !$0.isMuted } + muted
+    }
+
+    /// Switching tree/in-line reorders the listing under the cursor, so the
+    /// index follows the selected item. `$flatFolders` emits before the new
+    /// value lands, hence the order is computed from the incoming flag.
+    private func observeFlatFolders() {
+        flatFoldersObserver = settings.$flatFolders.dropFirst().sink { [weak self] flat in
+            guard let self, let selected = self.selectedItem,
+                  let index = self.orderedItems(flat: flat).firstIndex(where: { $0.url == selected }) else { return }
+            self.selectedIndex = index
+        }
     }
 
     private static let lastFolderFile = AppSettings.configBase.appendingPathComponent("last-folder.txt")
@@ -188,6 +216,7 @@ class FileExplorerManager: ObservableObject {
         history.append(currentPath)
         historyIndex = 0
         startMonitoringDirectory()
+        observeFlatFolders()
 
         // If a file was passed, select it
         if let initialFile = FileExplorerApp.initialFile {
@@ -244,6 +273,7 @@ class FileExplorerManager: ObservableObject {
     // nonisolated(unsafe): only written once in init, removed in deinit;
     // NotificationCenter itself is thread-safe
     nonisolated(unsafe) private var openPathObserver: NSObjectProtocol?
+    private var flatFoldersObserver: AnyCancellable?
 
     private func defaultSortMode(for path: URL) -> SortMode {
         let home = fileManager.homeDirectoryForCurrentUser
@@ -324,6 +354,25 @@ class FileExplorerManager: ObservableObject {
     /// Used by sidebar/breadcrumb/volume taps that shouldn't restore a child selection.
     func navigateToFolder(_ url: URL) {
         navigateTo(url) { [weak self] in self?.selectCurrentFolder() }
+    }
+
+    /// Show an item where it lives: a folder is entered, a file's folder is
+    /// entered with the cursor on the file so it previews right away.
+    /// Leaves the color tag pane, which lists items from anywhere on disk.
+    func reveal(_ url: URL, isDirectory: Bool) {
+        currentPane = .browser
+        if isDirectory {
+            navigateTo(url)
+            return
+        }
+        guard let folder = SourceRegistry.shared.source(for: url).parent(of: url) else { return }
+        navigateTo(folder) { [weak self] in
+            guard let self else { return }
+            let index = self.allItems.firstIndex { $0.url == url } ?? -1
+            self.selectItem(at: index, url: url)
+            self.sidebarFocused = false
+            self.rightPaneFocused = false
+        }
     }
 
     func navigateUp() {
