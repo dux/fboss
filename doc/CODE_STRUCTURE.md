@@ -194,6 +194,13 @@ Primary file listing. Two modes via `settings.flatFolders`:
 - **Flat**: `FlatBreadcrumbRow` + children at depth 1.
 
 **FileTreeRow:** icon + filename + color dots + date + size. Single click on dir: select then navigate (150ms). Click file: toggle selection. Double click: open. Drag: `NSItemProvider`. Right-click: custom context menu. Background: blue=selected, green=in selection.
+Hidden rows render at half opacity; gitignored rows mute only the icon and name (secondary text colour) so a selected ignored row keeps its full highlight.
+
+### Gitignore dimming
+`GitIgnore` (`Models/GitIgnore.swift`) is loaded once per listing in `loadContents` and `FolderPeek.load`, and `buildListing` stamps `CachedFileInfo.isIgnored` from it.
+`GitIgnore.load(for:)` walks up from the folder to the directory holding `.git` and reads every `.gitignore` on the way plus `.git/info/exclude`; outside any repository only the folder's own `.gitignore` counts, and it returns nil when no file applies so listings skip matching entirely.
+Matching follows gitignore(5) - last match wins, deeper files override shallower ones, a slash anywhere but the end anchors the pattern, a trailing slash is folder-only, `!` re-includes, `**` spans folders - with each pattern compiled to an `NSRegularExpression`.
+An ignored ancestor marks the whole folder ignored up front, so per-entry checks only ever match one path. The global `core.excludesFile` is not read.
 
 ### Folder hover peek
 Resting the mouse on a folder row for 400 ms floats a panel with the folder's first 20 entries and a "... N more" line (`Views/FolderPeekPanel.swift`).
@@ -302,6 +309,7 @@ app/
     FolderIconManager.swift          -- Custom emoji folder icons
     IconProvider.swift               -- vscode-icons files and Catppuccin folders
     GitRepoManager.swift             -- Git repo detection
+    GitIgnore.swift                  -- .gitignore rules for dimming ignored entries
     NpmPackageManager.swift          -- npm package detection
     MountsManager.swift              -- SSH/SMB favorites and connection
     MovieManager.swift               -- OMDB movie info

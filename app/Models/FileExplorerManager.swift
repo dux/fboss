@@ -31,14 +31,17 @@ struct CachedFileInfo: Identifiable, Equatable {
     let modDate: Date?
     let isHidden: Bool
     let displayName: String?
+    /// Matched by a `.gitignore` that applies to its folder
+    let isIgnored: Bool
 
-    init(url: URL, isDirectory: Bool, size: Int64, modDate: Date?, isHidden: Bool, displayName: String? = nil) {
+    init(url: URL, isDirectory: Bool, size: Int64, modDate: Date?, isHidden: Bool, displayName: String? = nil, isIgnored: Bool = false) {
         self.url = url
         self.isDirectory = isDirectory
         self.size = size
         self.modDate = modDate
         self.isHidden = isHidden
         self.displayName = displayName
+        self.isIgnored = isIgnored
     }
 
     var id: String { url.absoluteString }

@@ -26,6 +26,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/file_explorer_swift/main/instal
 - Flat folders mode: optional inline rendering instead of ancestor tree
 - Sort by name or modified date (auto-selects per folder: Downloads/Desktop default to modified)
 - Show/hide hidden files toggle
+- Gitignored files and folders are dimmed (nested `.gitignore` files and `.git/info/exclude` honoured)
 - Relative timestamps ("3 minutes", "2 hours & 15 min", "5 days")
 - Compact file sizes (kb, mb, gb)
 - Drag-and-drop files into folders

@@ -21,7 +21,7 @@ struct FolderPeek: Sendable {
         try Task.checkCancellation()
 
         let showAll = showHidden || folder.lastPathComponent == ".Trash"
-        let listing = FileExplorerManager.buildListing(raw, showAll: showAll, sortMode: sortMode)
+        let listing = FileExplorerManager.buildListing(raw, showAll: showAll, sortMode: sortMode, ignore: GitIgnore.load(for: folder))
         let all = listing.directories + listing.files
         return Self(
             folder: folder,

@@ -37,7 +37,8 @@ extension FileExplorerManager {
         do {
             if let entries = try source.listSyncIfCheap(path) {
                 isLoadingDirectory = false
-                applyLoadResult(.success(Self.buildListing(entries, showAll: showAll, sortMode: mode)))
+                let ignore = GitIgnore.load(for: path)
+                applyLoadResult(.success(Self.buildListing(entries, showAll: showAll, sortMode: mode, ignore: ignore)))
                 completion?()
                 return
             }
@@ -57,7 +58,8 @@ extension FileExplorerManager {
             do {
                 let entries = try await source.list(path)
                 outcome = await Task.detached(priority: .userInitiated) {
-                    DirectoryLoadResult.success(Self.buildListing(entries, showAll: showAll, sortMode: mode))
+                    let ignore = GitIgnore.load(for: path)
+                    return DirectoryLoadResult.success(Self.buildListing(entries, showAll: showAll, sortMode: mode, ignore: ignore))
                 }.value
             } catch {
                 outcome = .failure(error.localizedDescription)
@@ -105,10 +107,10 @@ extension FileExplorerManager {
         }
     }
 
-    /// Hidden-file policy, dir/file split, and sort over raw source entries.
-    /// Pure and Sendable so the slow path can run it off the main actor.
-    /// Internal so the folder peek orders its page the same way.
-    nonisolated static func buildListing(_ entries: [SourceEntry], showAll: Bool, sortMode: SortMode) -> DirectoryListing {
+    /// Hidden-file policy, gitignore flag, dir/file split, and sort over raw
+    /// source entries. Pure and Sendable so the slow path can run it off the
+    /// main actor. Internal so the folder peek orders its page the same way.
+    nonisolated static func buildListing(_ entries: [SourceEntry], showAll: Bool, sortMode: SortMode, ignore: GitIgnore?) -> DirectoryListing {
         var dirs: [CachedFileInfo] = []
         var fils: [CachedFileInfo] = []
         var hiddenSkipped = 0
@@ -125,7 +127,8 @@ extension FileExplorerManager {
                 size: entry.size,
                 modDate: entry.modDate,
                 isHidden: entry.isHidden,
-                displayName: entry.displayName
+                displayName: entry.displayName,
+                isIgnored: ignore?.isIgnored(name: entry.url.lastPathComponent, isDirectory: entry.isDirectory) ?? false
             )
 
             if entry.isDirectory {
@@ -210,7 +213,7 @@ extension FileExplorerManager {
         directories = Self.sortItems(directories.map { info in
             guard let size = sizes[info.url.path], size != info.size else { return info }
             return CachedFileInfo(url: info.url, isDirectory: info.isDirectory, size: size,
-                                  modDate: info.modDate, isHidden: info.isHidden, displayName: info.displayName)
+                                  modDate: info.modDate, isHidden: info.isHidden, displayName: info.displayName, isIgnored: info.isIgnored)
         }, sortMode: .size)
         // Sorting can move the selected row
         if let previous, let index = allItems.firstIndex(where: { $0.url == previous }) {

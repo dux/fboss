@@ -151,17 +151,19 @@ private struct FolderPeekEntryRow: View {
         HStack(spacing: 6) {
             if entry.isDirectory {
                 FolderIconView(url: entry.url, size: 20)
+                    .opacity(entry.isIgnored ? 0.45 : 1.0)
             } else {
                 Image(nsImage: IconProvider.shared.icon(for: entry.url, isDirectory: false))
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 20, height: 20)
+                    .opacity(entry.isIgnored ? 0.45 : 1.0)
             }
 
             Text(entry.name)
                 .textStyle(.default)
                 .lineLimit(1)
-                .foregroundColor(.primary)
+                .foregroundColor(entry.isIgnored ? .secondary : .primary)
 
             Spacer()
 

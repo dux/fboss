@@ -529,6 +529,7 @@ struct FileTreeRow: View {
     }
 
     private var isHidden: Bool { fileInfo.isHidden }
+    private var isIgnored: Bool { fileInfo.isIgnored }
 
     private var isRenaming: Bool {
         manager.renamingItem == url
@@ -571,6 +572,7 @@ struct FileTreeRow: View {
         HStack(spacing: 6) {
             if isDirectory {
                 FolderIconView(url: url, size: 22)
+                    .opacity(isIgnored ? 0.45 : 1.0)
                     .overlay(alignment: .leading) {
                         Button(action: { manager.navigateTo(url) }) {
                             Image(systemName: "chevron.right")
@@ -591,12 +593,15 @@ struct FileTreeRow: View {
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 22, height: 22)
+                    .opacity(isIgnored ? 0.45 : 1.0)
             }
 
+            // Gitignored entries mute the icon and name only, so a selected
+            // row keeps its full highlight
             Text(fileInfo.name)
                 .textStyle(.default)
                 .lineLimit(1)
-                .foregroundColor(.primary)
+                .foregroundColor(isIgnored ? .secondary : .primary)
 
             if !fileColors.isEmpty {
                 HStack(spacing: 2) {
