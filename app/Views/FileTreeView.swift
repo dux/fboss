@@ -1,6 +1,15 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Content bounds of the hovered folder row. Anchors resolve at layout time,
+/// so the peek overlay tracks the row through scrolling without any row state.
+private struct HoveredFolderAnchorKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 // MARK: - File Tree View (ancestor path + children)
 
 struct FileTreeView: View {
@@ -9,6 +18,8 @@ struct FileTreeView: View {
     @State private var isDragOver = false
     @State private var viewportHeight: CGFloat = 0
     @State private var scrollTopIndex: Int = 0
+    @StateObject private var peekModel = FolderPeekModel()
+    @ObservedObject private var contextMenu = ContextMenuManager.shared
 
     private let rowHeight: CGFloat = 32   // icon 22 + vertical padding 10
 
@@ -70,6 +81,7 @@ struct FileTreeView: View {
                                 FileTreeRow(
                                     fileInfo: fileInfo,
                                     manager: manager,
+                                    peek: peekModel,
                                     index: index,
                                     depth: 1,
                                     indentStep: indentStep
@@ -97,6 +109,7 @@ struct FileTreeView: View {
                                 FileTreeRow(
                                     fileInfo: fileInfo,
                                     manager: manager,
+                                    peek: peekModel,
                                     index: index,
                                     depth: childDepth,
                                     indentStep: indentStep
@@ -127,6 +140,10 @@ struct FileTreeView: View {
                 }
                 .onChange(of: manager.currentPath) { _ in
                     scrollTopIndex = 0
+                    peekModel.dismiss()
+                }
+                .onChange(of: contextMenu.isShowing) { showing in
+                    if showing { peekModel.dismiss() }
                 }
                 .overlay(
                     Group {
@@ -139,11 +156,63 @@ struct FileTreeView: View {
                     }
                     .allowsHitTesting(false)
                 )
+                .overlayPreferenceValue(HoveredFolderAnchorKey.self) { anchor in
+                    peekOverlay(anchor: anchor)
+                }
                 .onDrop(of: [.fileURL, .url], isTargeted: $isDragOver) { providers in
                     handleDrop(providers: providers)
                     return true
                 }
             }
+        }
+    }
+
+    /// Panel starts halfway across the tree (300 pt at most) and 40 pt above the
+    /// hovered row, so the cursor reaches it by moving right along the row. It
+    /// shifts up when it would run past the bottom of the tree, and rows are
+    /// capped to what fits so the fold count grows instead of the panel being cut off.
+    @ViewBuilder
+    private func peekOverlay(anchor: Anchor<CGRect>?) -> some View {
+        if peekModel.isShowing, let anchor {
+            GeometryReader { geo in
+                let row = geo[anchor]   // content bounds, excludes the row's padding
+                let available = geo.size.height - FolderPeekPanel.verticalPadding * 2 - FolderPeekPanel.titleHeight
+                let maxRows = Int(available / FolderPeekPanel.rowHeight)
+                let layout = FolderPeekPanel.Layout(
+                    peek: peekModel.peek,
+                    failure: peekModel.failure,
+                    maxRows: maxRows,
+                    title: peekModel.shownFolder?.lastPathComponent
+                )
+                let x = min(geo.size.width * 0.5, 300, max(0, geo.size.width - FolderPeekPanel.width - 8))
+                let preferred = max(0, row.minY - 40)
+                let y = preferred + layout.height <= geo.size.height ? preferred : max(0, geo.size.height - layout.height)
+                FolderPeekPanel(
+                    layout: layout,
+                    onSelect: { entry in
+                        if let folder = peekModel.peek?.folder { openPeekEntry(entry, in: folder) }
+                    },
+                    onHover: { peekModel.panelHover($0) },
+                    onFrame: { peekModel.panelFrame = $0 }
+                )
+                .offset(x: x, y: y)
+            }
+        }
+    }
+
+    /// A clicked folder opens directly; a clicked file enters the peeked folder
+    /// with the cursor on it, so it previews right away.
+    private func openPeekEntry(_ entry: CachedFileInfo, in folder: URL) {
+        peekModel.dismiss()
+        if entry.isDirectory {
+            manager.navigateTo(entry.url)
+            return
+        }
+        manager.navigateTo(folder) {
+            let index = manager.allItems.firstIndex { $0.url == entry.url } ?? -1
+            manager.selectItem(at: index, url: entry.url)
+            manager.sidebarFocused = false
+            manager.rightPaneFocused = false
         }
     }
 
@@ -405,6 +474,7 @@ struct FileTreeRow: View {
     @ObservedObject var manager: FileExplorerManager
     @ObservedObject var selection = SelectionManager.shared
     @ObservedObject var tagManager = ColorTagManager.shared
+    @ObservedObject var peek: FolderPeekModel
     let index: Int
     let depth: Int
     let indentStep: CGFloat
@@ -412,6 +482,7 @@ struct FileTreeRow: View {
 
     private var url: URL { fileInfo.url }
     private var isDirectory: Bool { fileInfo.isDirectory }
+    private var leadingInset: CGFloat { CGFloat(depth) * indentStep + 12 }
 
     private var isSelected: Bool {
         manager.selectedIndex == index && manager.selectedItem == url
@@ -521,7 +592,11 @@ struct FileTreeRow: View {
                     .frame(width: 60, alignment: .trailing)
             }
         }
-        .padding(.leading, CGFloat(depth) * indentStep + 12)
+        // The row of the folder on show publishes its anchor. Not the hovered
+        // row: rows under the panel still see the cursor, and a panel that
+        // followed them would slide out from under it.
+        .anchorPreference(key: HoveredFolderAnchorKey.self, value: .bounds) { peek.shownFolder == url ? $0 : nil }
+        .padding(.leading, leadingInset)
         .padding(.trailing, 12)
         .padding(.vertical, 5)
         .rowHighlight(
@@ -531,8 +606,13 @@ struct FileTreeRow: View {
             isInSelection: isInSelection
         )
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
-        .overlay(FileRowMouseArea(dragURLs: { dragURLs }, onClick: handleClick))
+        .overlay(FileRowMouseArea(
+            dragURLs: { dragURLs },
+            onClick: handleClick,
+            onMouseDown: { peek.dismiss() },
+            onHover: handleHover,
+            hoverShield: { peek.panelContains($0) }
+        ))
         .opacity(isHidden ? 0.5 : 1.0)
         .customContextMenu(url: url)
     }
@@ -545,6 +625,16 @@ struct FileTreeRow: View {
             if !urls.isEmpty { return urls }
         }
         return url.isFileURL ? [url] : []
+    }
+
+    private func handleHover(_ inside: Bool) {
+        isHovered = inside
+        guard isDirectory else { return }
+        if inside {
+            peek.hover(folder: url, showHidden: manager.showHidden, sortMode: manager.sortMode)
+        } else {
+            peek.leave(folder: url)
+        }
     }
 
     private func handleClick(at point: CGPoint, clickCount: Int, modifiers: NSEvent.ModifierFlags) {
@@ -568,8 +658,7 @@ struct FileTreeRow: View {
             return
         }
         // Hover chevron in the indent gutter enters the directory directly
-        let iconLeading = CGFloat(depth) * indentStep + 12
-        if isDirectory && point.x >= iconLeading - 18 && point.x < iconLeading {
+        if isDirectory && point.x >= leadingInset - 18 && point.x < leadingInset {
             manager.navigateTo(url)
             return
         }

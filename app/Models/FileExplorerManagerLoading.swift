@@ -107,7 +107,8 @@ extension FileExplorerManager {
 
     /// Hidden-file policy, dir/file split, and sort over raw source entries.
     /// Pure and Sendable so the slow path can run it off the main actor.
-    nonisolated private static func buildListing(_ entries: [SourceEntry], showAll: Bool, sortMode: SortMode) -> DirectoryListing {
+    /// Internal so the folder peek orders its page the same way.
+    nonisolated static func buildListing(_ entries: [SourceEntry], showAll: Bool, sortMode: SortMode) -> DirectoryListing {
         var dirs: [CachedFileInfo] = []
         var fils: [CachedFileInfo] = []
         var hiddenSkipped = 0
@@ -143,7 +144,7 @@ extension FileExplorerManager {
         )
     }
 
-    nonisolated private static func sortItems(_ items: [CachedFileInfo], sortMode: SortMode) -> [CachedFileInfo] {
+    nonisolated static func sortItems(_ items: [CachedFileInfo], sortMode: SortMode) -> [CachedFileInfo] {
         switch sortMode {
         case .name:
             return items.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

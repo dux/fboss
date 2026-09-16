@@ -195,6 +195,22 @@ Primary file listing. Two modes via `settings.flatFolders`:
 
 **FileTreeRow:** icon + filename + color dots + date + size. Single click on dir: select then navigate (150ms). Click file: toggle selection. Double click: open. Drag: `NSItemProvider`. Right-click: custom context menu. Background: blue=selected, green=in selection.
 
+### Folder hover peek
+Resting the mouse on a folder row for 400 ms floats a panel with the folder's first 20 entries and a "... N more" line (`Views/FolderPeekPanel.swift`).
+Clicking an entry navigates into the peeked folder with the cursor on that entry.
+`FolderPeekModel` (`Models/FolderPeekModel.swift`) is owned as a `@StateObject` by `FileTreeView`, so it survives `LazyVStack` row recycling.
+The row of the folder on show (`shownFolder`, not the hovered row) publishes its content bounds through an `anchorPreference`, and the tree's `overlayPreferenceValue` resolves it to place the panel -- the same idiom the context menu uses for its colour submenu.
+`FolderPeek.load` (`Models/FolderPeek.swift`) lists through the folder's `FileSystemSource` and reuses `FileExplorerManager.buildListing`, so the page honours the browser's hidden policy and sort mode on every backend.
+The panel is clamped inside the tree, folds rows that do not fit vertically, and is dismissed on mouse down, navigation and when the context menu opens.
+
+The panel starts halfway across the tree (300 pt at most) and 40 pt above the hovered row, so the cursor reaches it by moving right along the row.
+
+Row hover comes from `FileRowMouseArea`, not SwiftUI's `.onHover`: that AppKit overlay sits above the row content and swallows SwiftUI hover.
+The panel likewise owns its cursor through `Views/FolderPeekMouseArea.swift` (hover, row highlight and clicks, all in panel-local coordinates) rather than SwiftUI gestures.
+`NSTrackingArea`s are purely geometric, so rows under the floating panel still report; the model ignores row events while the panel is entered, and the row mouse area also asks `panelContains` (the `hoverShield`, fed by the panel's AppKit window frame) so uncovered parts of those rows do not highlight.
+AppKit sends no exit for a view that leaves the window, so the panel's mouse layer reports its own exit on removal and the model refuses a panel enter while no panel is shown.
+Leaving a row only schedules a dismiss (`leaveGrace`, 150 ms) so the cursor can cross onto the panel.
+
 ### Drop handling
 Both views accept `.fileURL` drops -- copies files to current directory with name deduplication.
 
@@ -297,6 +313,8 @@ app/
     AppSearcher.swift                -- App discovery for "Open with"
     AppUninstaller.swift             -- App cleanup/uninstall
     FolderSizeCalculator.swift       -- Fresh recursive sizes for sorting and previews
+    FolderPeek.swift                 -- First page of a hovered folder's contents
+    FolderPeekModel.swift            -- Hover delay and lifecycle for the peek panel
     DebouncedJSONWriter.swift         -- Atomic serialized persistence with flush
     AppUpdater.swift                 -- GitHub release update checker
   Views/
@@ -306,6 +324,8 @@ app/
     ActionsPane.swift                -- Right pane actions (capability-gated)
     FileTreeView.swift               -- Tree/flat file listing (primary)
     FileRowMouseArea.swift           -- AppKit mouse handling for rows
+    FolderPeekPanel.swift            -- Floating folder-contents panel on hover
+    FolderPeekMouseArea.swift        -- AppKit hover/click layer for the peek panel
     CustomContextMenu.swift          -- Right-click context menu system
     HelperViews.swift                -- FileDetailsView, EmptyFolderView, rename field
     SharedComponents.swift           -- Drop helpers, text reader, webloc writer
