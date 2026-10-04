@@ -5,8 +5,8 @@ import SwiftUI
 class AppUpdater: ObservableObject {
     static let shared = AppUpdater()
 
-    private let repo = "dux/file_explorer_swift"
-    private let appName = "FileExplorerByDux"
+    private let repo = "dux/fboss"
+    private let appName = "fBoss"
     private let installDir = "/Applications"
 
     enum UpdateState: Equatable {
@@ -112,7 +112,7 @@ class AppUpdater: ObservableObject {
     // MARK: - Private
 
     nonisolated private func fetchRemoteCommit() async throws -> String {
-        guard let url = URL(string: "https://api.github.com/repos/dux/file_explorer_swift/git/ref/tags/latest") else {
+        guard let url = URL(string: "https://api.github.com/repos/dux/fboss/git/ref/tags/latest") else {
             throw UpdateError.invalidURL
         }
         var request = URLRequest(url: url)

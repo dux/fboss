@@ -109,15 +109,15 @@ struct FileExplorerApp: App {
         }
     }
 
-    private static let githubURL = "https://github.com/dux/file_explorer_swift"
+    private static let githubURL = "https://github.com/dux/fboss"
 
     private static var appName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "File Explorer"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "fBoss"
     }
 
     private static func showAboutPanel() {
         let credits = NSMutableAttributedString(
-            string: "github.com/dux/file_explorer_swift",
+            string: "github.com/dux/fboss",
             attributes: [
                 .link: URL(string: githubURL) as Any,
                 .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)

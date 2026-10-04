@@ -3,11 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>FileExplorer</string>
+    <string>fBoss</string>
     <key>CFBundleIdentifier</key>
     <string>com.dux.file-explorer</string>
     <key>CFBundleName</key>
-    <string>File explorer by @dux</string>
+    <string>fBoss</string>
+    <key>CFBundleDisplayName</key>
+    <string>fBoss</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>

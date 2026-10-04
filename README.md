@@ -1,13 +1,13 @@
-# FileExplorer
+# fBoss
 
 Native macOS Finder replacement built with Swift and SwiftUI. Fast, keyboard-driven, with rich file previews and iPhone file management.
 
-[Demo page](https://dux.github.io/file_explorer_swift/web-demo/)
+[Demo page](https://dux.github.io/fboss/web-demo/)
 
 ## Install
 
 ```
-curl -fsSL https://raw.githubusercontent.com/dux/file_explorer_swift/main/install.sh?v=ce4fa3a | bash
+curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a | bash
 ```
 
 ![PLain](web-demo/assets/plain.png)
@@ -172,7 +172,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/file_explorer_swift/main/instal
 
 ## vs Finder
 
-| Feature | Finder | FileExplorer |
+| Feature | Finder | fBoss |
 |---|---|---|
 | Tree view with ancestors | No | Yes |
 | Keyboard-driven navigation | Limited | Full (arrows, tab cycling, letter jump, context menu, right pane) |

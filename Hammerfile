@@ -1,12 +1,14 @@
-# Hammerfile - build / install / run helpers for File Explorer.
+# Hammerfile - build / install / run helpers for fBoss.
 # Run with: hammer <command>   (https://github.com/dux/hammer)
 
-APP_NAME    ||= 'FileExplorerByDux'
-BINARY_NAME ||= 'FileExplorer'
+APP_NAME    ||= 'fBoss'
+BINARY_NAME ||= 'fBoss'
+# SPM resource bundle is {package}_{target}. The target stays FileExplorer.
+TARGET_NAME ||= 'FileExplorer'
 BUNDLE_DIR  ||= "#{APP_NAME}.app"
 INSTALL_DIR ||= '/Applications'
 BUILD_CFG   ||= 'debug'
-RES_BUNDLE  ||= "#{BINARY_NAME}_#{BINARY_NAME}.bundle"
+RES_BUNDLE  ||= "#{APP_NAME}_#{TARGET_NAME}.bundle"
 
 # Release ops need push rights on the repo. `git push` goes over ssh as dux, but
 # `gh` uses whichever account is active - and a read-only one fails the release

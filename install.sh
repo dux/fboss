@@ -1,7 +1,7 @@
 #!/bin/bash
 
-APP_NAME="FileExplorerByDux"
-REPO="dux/file_explorer_swift"
+APP_NAME="fBoss"
+REPO="dux/fboss"
 INSTALL_DIR="/Applications"
 DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$APP_NAME.app.tar.gz"
 
@@ -50,7 +50,7 @@ fi
 echo "* Creating 'fe' command in $FE_DIR..."
 cat > "$FE_DIR/fe" <<'SCRIPT'
 #!/bin/bash
-open -a FileExplorerByDux "${1:-.}"
+open -a fBoss "${1:-.}"
 SCRIPT
 chmod +x "$FE_DIR/fe"
 

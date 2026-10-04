@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "FileExplorer",
+    name: "fBoss",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .executable(
-            name: "FileExplorer",
+            name: "fBoss",
             targets: ["FileExplorer"]
         )
     ],
