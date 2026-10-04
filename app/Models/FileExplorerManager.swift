@@ -233,9 +233,17 @@ class FileExplorerManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self, let url = notification.object as? URL else { return }
+            guard let self else { return }
+            let urls: [URL]
+            if let many = notification.object as? [URL] {
+                urls = many
+            } else if let one = notification.object as? URL {
+                urls = [one]
+            } else {
+                return
+            }
             Task { @MainActor in
-                self.handleOpenRequest(url)
+                self.handleOpenRequests(urls)
             }
         }
     }
@@ -247,25 +255,33 @@ class FileExplorerManager: ObservableObject {
         }
     }
 
-    func handleOpenRequest(_ url: URL) {
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return }
+    func handleOpenRequests(_ urls: [URL]) {
+        var entries: [(url: URL, isDirectory: Bool)] = []
+        entries.reserveCapacity(urls.count)
+        for url in urls {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { continue }
+            entries.append((url, isDirectory.boolValue))
+        }
+        guard let last = entries.last else { return }
 
-        if isDirectory.boolValue {
-            navigateTo(url)
+        if last.isDirectory {
+            navigateTo(last.url)
         } else {
-            // Navigate to parent, then select the file once its listing is in
-            let parent = url.deletingLastPathComponent()
-            navigateTo(parent) { [weak self] in
+            // Later paths win. Files that share that folder stay on the cursor's parent.
+            let folder = last.url.deletingLastPathComponent()
+            let cursor = entries.last { entry in
+                !entry.isDirectory && entry.url.deletingLastPathComponent().path == folder.path
+            }?.url ?? last.url
+            navigateTo(folder) { [weak self] in
                 guard let self else { return }
-                self.selectedItem = url
-                if let index = self.allItems.firstIndex(where: { $0.url.path == url.path }) {
+                self.selectedItem = cursor
+                if let index = self.allItems.firstIndex(where: { $0.url.path == cursor.path }) {
                     self.selectedIndex = index
                 }
             }
         }
 
-        // Bring window to front
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
