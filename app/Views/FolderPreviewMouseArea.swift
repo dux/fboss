@@ -1,14 +1,14 @@
 import SwiftUI
 import AppKit
 
-/// AppKit mouse layer for the folder peek panel. SwiftUI hover and taps are
-/// unreliable above the rows' own AppKit mouse areas, so the panel tracks the
-/// cursor and takes clicks itself. Points are panel-local, top-left origin.
-struct FolderPeekMouseArea: NSViewRepresentable {
-    /// Cursor position inside the panel, `nil` once it has left (or the panel is gone).
+/// AppKit mouse layer for the folder preview dialog. SwiftUI hover and taps are
+/// unreliable above the rows' own AppKit mouse areas, so the dialog tracks the
+/// cursor and takes clicks itself. Points are dialog-local, top-left origin.
+struct FolderPreviewMouseArea: NSViewRepresentable {
+    /// Cursor position inside the dialog, `nil` once it has left (or the dialog is gone).
     let onHover: @MainActor (CGPoint?) -> Void
     let onClick: @MainActor (CGPoint) -> Void
-    /// Panel frame in AppKit window coordinates, `.zero` once the panel is gone.
+    /// Dialog frame in AppKit window coordinates, `.zero` once the dialog is gone.
     let onFrame: @MainActor (CGRect) -> Void
 
     func makeNSView(context: Context) -> TrackingView {
@@ -40,7 +40,7 @@ struct FolderPeekMouseArea: NSViewRepresentable {
         }
 
         // AppKit sends no mouseExited for a view that leaves the window, so a
-        // panel dismissed under the cursor reports its own exit here.
+        // dialog dismissed under the cursor reports its own exit here.
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             if window == nil {

@@ -129,8 +129,8 @@ struct GitIgnoreTests {
         try Data().write(to: repo.url.appendingPathComponent("a.log"))
         try Data().write(to: repo.url.appendingPathComponent("a.txt"))
         try FileManager.default.createDirectory(at: repo.url.appendingPathComponent("build"), withIntermediateDirectories: true)
-        let peek = try await FolderPeek.load(folder: repo.url, source: LocalFileSource(), showHidden: false, sortMode: .name)
-        let flags = Dictionary(uniqueKeysWithValues: peek.entries.map { ($0.name, $0.isIgnored) })
+        let preview = try await FolderPreview.load(folder: repo.url, source: LocalFileSource(), showHidden: false)
+        let flags = Dictionary(uniqueKeysWithValues: preview.entries.map { ($0.name, $0.isIgnored) })
         #expect(flags == ["build": true, "a.log": true, "a.txt": false])
     }
 }

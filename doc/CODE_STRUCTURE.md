@@ -176,7 +176,7 @@ ContentView
 ### Folder navigation
 - **`navigateTo(_ url)`** -- validates path, saves selection memory, pushes history, sets `currentPath`, auto-selects sort mode (.modified for Downloads/Desktop, .name otherwise), calls `loadContents()`, restores selection.
 - **`navigateUp()`** -- stores current dir URL in parent's selection memory, calls `navigateTo(parent)`.
-- **`reveal(_ url, isDirectory:)`** -- switches to the browser pane, enters a folder directly or enters a file's folder with the cursor on the file. Used by the folder peek and by clicking a row in `ColorTagView`.
+- **`reveal(_ url, isDirectory:)`** -- switches to the browser pane, enters a folder directly or enters a file's folder with the cursor on the file. Used by the folder preview and by clicking a row in `ColorTagView`.
 - **`goBack()` / `goForward()`** -- moves `historyIndex` through history stack.
 
 ### Breadcrumbs
@@ -200,27 +200,27 @@ In tree mode `allItems` lists folders, then files, then every hidden or gitignor
 Keyboard navigation and selection memory index into `allItems`, so the order lives in the manager rather than the view, and the manager re-syncs `selectedIndex` from `selectedItem` when `flatFolders` flips.
 
 ### Gitignore dimming
-`GitIgnore` (`Models/GitIgnore.swift`) is loaded once per listing in `loadContents` and `FolderPeek.load`, and `buildListing` stamps `CachedFileInfo.isIgnored` from it.
+`GitIgnore` (`Models/GitIgnore.swift`) is loaded once per listing in `loadContents` and `FolderPreview.load`, and `buildListing` stamps `CachedFileInfo.isIgnored` from it.
 `GitIgnore.load(for:)` walks up from the folder to the directory holding `.git` and reads every `.gitignore` on the way plus `.git/info/exclude`; outside any repository only the folder's own `.gitignore` counts, and it returns nil when no file applies so listings skip matching entirely.
 Matching follows gitignore(5) - last match wins, deeper files override shallower ones, a slash anywhere but the end anchors the pattern, a trailing slash is folder-only, `!` re-includes, `**` spans folders - with each pattern compiled to an `NSRegularExpression`.
 An ignored ancestor marks the whole folder ignored up front, so per-entry checks only ever match one path. The global `core.excludesFile` is not read.
 
-### Folder hover peek
-Resting the mouse on a folder row for 400 ms floats a panel with the folder's first 20 entries and a "... N more" line (`Views/FolderPeekPanel.swift`).
-Resting on a folder entry inside a panel opens the next panel off that entry, cascading like submenus; hovering another entry in a parent closes the levels below it.
-Clicking a folder entry opens that folder; clicking a file enters its folder with the cursor on the file; clicking a panel's title opens the peeked folder itself.
-`FolderPeekModel` (`Models/FolderPeekModel.swift`) keeps the cascade as a stack of levels and is owned as a `@StateObject` by `FileTreeView`, so it survives `LazyVStack` row recycling.
-The row of the folder on show (`shownFolder`, not the hovered row) publishes its content bounds through an `anchorPreference`, and the tree's `overlayPreferenceValue` resolves it to place the panel -- the same idiom the context menu uses for its colour submenu.
-`FolderPeek.load` (`Models/FolderPeek.swift`) lists through the folder's `FileSystemSource` and reuses `FileExplorerManager.buildListing`, so the page honours the browser's hidden policy and sort mode on every backend.
-The panel is clamped inside the tree, folds rows that do not fit vertically, and is dismissed on mouse down, navigation and when the context menu opens.
+### Folder preview dialog
+Resting the mouse on a folder row for 400 ms floats a dialog with the folder's first 20 entries and a "... N more" line (`Views/FolderPreviewDialog.swift`).
+Resting on a folder entry inside a dialog opens the next dialog off that entry, cascading like submenus; hovering another entry in a parent closes the levels below it.
+Clicking a folder entry opens that folder; clicking a file enters its folder with the cursor on the file; clicking a dialog's title opens the previewed folder itself.
+`FolderPreviewModel` (`Models/FolderPreviewModel.swift`) keeps the cascade as a stack of levels and is owned as a `@StateObject` by `FileTreeView`, so it survives `LazyVStack` row recycling.
+The row of the folder on show (`shownFolder`, not the hovered row) publishes its content bounds through an `anchorPreference`, and the tree's `overlayPreferenceValue` resolves it to place the dialog -- the same idiom the context menu uses for its colour submenu.
+`FolderPreview.load` (`Models/FolderPreview.swift`) lists through the folder's `FileSystemSource` and reuses `FileExplorerManager.buildListing`, so the page honours the browser's hidden policy on every backend; it always lists folders first and sorts by name, whatever the browser's sort mode.
+The dialog is clamped inside the tree, folds rows that do not fit vertically, and is dismissed on mouse down, navigation and when the context menu opens.
 
-The root panel starts halfway across the tree (300 pt at most) and 40 pt above the hovered row, so the cursor reaches it by moving right along the row; each deeper panel hangs off the entry row that opened it, overlapping its parent by 24 pt, and flips to the parent's left when out of room.
+The root dialog starts halfway across the tree (300 pt at most) and 40 pt above the hovered row, so the cursor reaches it by moving right along the row; each deeper dialog hangs off the entry row that opened it, overlapping its parent by 24 pt, and flips to the parent's left when out of room.
 
 Row hover comes from `FileRowMouseArea`, not SwiftUI's `.onHover`: that AppKit overlay sits above the row content and swallows SwiftUI hover.
-The panel likewise owns its cursor through `Views/FolderPeekMouseArea.swift` (hover, row highlight and clicks, all in panel-local coordinates) rather than SwiftUI gestures.
-`NSTrackingArea`s are purely geometric, so rows under the floating panel still report; the model ignores row events while the panel is entered, and the row mouse area also asks `panelContains` (the `hoverShield`, fed by the panel's AppKit window frame) so uncovered parts of those rows do not highlight.
-AppKit sends no exit for a view that leaves the window, so the panel's mouse layer reports its own exit on removal and the model refuses a panel enter while no panel is shown.
-Leaving a row only schedules a dismiss (`leaveGrace`, 150 ms) so the cursor can cross onto the panel.
+The dialog likewise owns its cursor through `Views/FolderPreviewMouseArea.swift` (hover, row highlight and clicks, all in dialog-local coordinates) rather than SwiftUI gestures.
+`NSTrackingArea`s are purely geometric, so rows under the floating dialog still report; the model ignores row events while the dialog is entered, and the row mouse area also asks `dialogContains` (the `hoverShield`, fed by the dialog's AppKit window frame) so uncovered parts of those rows do not highlight.
+AppKit sends no exit for a view that leaves the window, so the dialog's mouse layer reports its own exit on removal and the model refuses a dialog enter while no dialog is shown.
+Leaving a row only schedules a dismiss (`leaveGrace`, 150 ms) so the cursor can cross onto the dialog.
 
 ### Drop handling
 Both views accept `.fileURL` drops -- copies files to current directory with name deduplication.
@@ -325,8 +325,8 @@ app/
     AppSearcher.swift                -- App discovery for "Open with"
     AppUninstaller.swift             -- App cleanup/uninstall
     FolderSizeCalculator.swift       -- Fresh recursive sizes for sorting and previews
-    FolderPeek.swift                 -- First page of a hovered folder's contents
-    FolderPeekModel.swift            -- Hover delay and lifecycle for the peek panel
+    FolderPreview.swift              -- First page of a hovered folder's contents
+    FolderPreviewModel.swift         -- Hover delay and lifecycle for the preview dialog
     DebouncedJSONWriter.swift         -- Atomic serialized persistence with flush
     AppUpdater.swift                 -- GitHub release update checker
   Views/
@@ -336,8 +336,8 @@ app/
     ActionsPane.swift                -- Right pane actions (capability-gated)
     FileTreeView.swift               -- Tree/flat file listing (primary)
     FileRowMouseArea.swift           -- AppKit mouse handling for rows
-    FolderPeekPanel.swift            -- Floating folder-contents panel on hover
-    FolderPeekMouseArea.swift        -- AppKit hover/click layer for the peek panel
+    FolderPreviewDialog.swift        -- Floating folder-contents dialog on hover
+    FolderPreviewMouseArea.swift     -- AppKit hover/click layer for the preview dialog
     CustomContextMenu.swift          -- Right-click context menu system
     HelperViews.swift                -- FileDetailsView, EmptyFolderView, rename field
     SharedComponents.swift           -- Drop helpers, text reader, webloc writer

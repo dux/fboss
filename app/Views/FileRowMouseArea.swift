@@ -18,7 +18,7 @@ struct FileRowMouseArea: NSViewRepresentable {
     /// never fires; hover is reported from here instead.
     var onHover: (@MainActor (Bool) -> Void)? = nil
     /// Tracking areas are purely geometric: SwiftUI content floating above the
-    /// rows (the folder peek panel) does not stop them. The shield answers
+    /// rows (the folder preview dialog) does not stop them. The shield answers
     /// whether a `locationInWindow` is covered, and a covered cursor counts as
     /// not hovering.
     var hoverShield: (@MainActor (CGPoint) -> Bool)? = nil

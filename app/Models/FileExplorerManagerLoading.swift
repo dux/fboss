@@ -109,7 +109,7 @@ extension FileExplorerManager {
 
     /// Hidden-file policy, gitignore flag, dir/file split, and sort over raw
     /// source entries. Pure and Sendable so the slow path can run it off the
-    /// main actor. Internal so the folder peek orders its page the same way.
+    /// main actor. Internal so the folder preview orders its page the same way.
     nonisolated static func buildListing(_ entries: [SourceEntry], showAll: Bool, sortMode: SortMode, ignore: GitIgnore?) -> DirectoryListing {
         var dirs: [CachedFileInfo] = []
         var fils: [CachedFileInfo] = []

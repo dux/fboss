@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Floating list of a hovered folder's first entries. Same chrome as the
 /// custom context menu; rows follow the archive/pkg entry row idiom. Clicking
-/// an entry hands it to `onSelect`; the panel reports its own hover and frame
+/// an entry hands it to `onSelect`; the dialog reports its own hover and frame
 /// so the tree can keep it open while the cursor is on it.
-struct FolderPeekPanel: View {
+struct FolderPreviewDialog: View {
     nonisolated static let width: CGFloat = 340
     nonisolated static let rowHeight: CGFloat = 26
     nonisolated static let titleHeight: CGFloat = 24
@@ -18,7 +18,7 @@ struct FolderPeekPanel: View {
         let foldedCount: Int
         let message: String?
 
-        init(peek: FolderPeek?, failure: String?, maxRows: Int, title: String? = nil) {
+        init(preview: FolderPreview?, failure: String?, maxRows: Int, title: String? = nil) {
             self.title = title
             if let failure {
                 rows = []
@@ -26,21 +26,21 @@ struct FolderPeekPanel: View {
                 message = failure
                 return
             }
-            guard let peek, !peek.entries.isEmpty else {
+            guard let preview, !preview.entries.isEmpty else {
                 rows = []
                 foldedCount = 0
                 message = "Folder is empty"
                 return
             }
-            let total = peek.entries.count + peek.remainingCount
+            let total = preview.entries.count + preview.remainingCount
             let fits = max(1, maxRows)
-            if peek.entries.count <= fits && peek.remainingCount == 0 {
-                rows = peek.entries
+            if preview.entries.count <= fits && preview.remainingCount == 0 {
+                rows = preview.entries
                 foldedCount = 0
             } else {
                 // Keep one row for the "... N more" line
-                let visible = min(peek.entries.count, max(1, fits - 1))
-                rows = Array(peek.entries.prefix(visible))
+                let visible = min(preview.entries.count, max(1, fits - 1))
+                rows = Array(preview.entries.prefix(visible))
                 foldedCount = total - visible
             }
             message = nil
@@ -48,17 +48,17 @@ struct FolderPeekPanel: View {
 
         var hasFooter: Bool { foldedCount > 0 || message != nil }
 
-        var titleHeight: CGFloat { title == nil ? 0 : FolderPeekPanel.titleHeight }
+        var titleHeight: CGFloat { title == nil ? 0 : FolderPreviewDialog.titleHeight }
 
         var height: CGFloat {
             let lines = CGFloat(rows.count) + (hasFooter ? 1 : 0)
-            return titleHeight + lines * FolderPeekPanel.rowHeight + FolderPeekPanel.verticalPadding * 2
+            return titleHeight + lines * FolderPreviewDialog.rowHeight + FolderPreviewDialog.verticalPadding * 2
         }
     }
 
     let layout: Layout
     let onSelect: (CachedFileInfo) -> Void
-    /// The title was clicked: open the peeked folder itself.
+    /// The title was clicked: open the previewed folder itself.
     let onOpenFolder: () -> Void
     let onHover: (Bool) -> Void
     /// The entry under the cursor changed; `nil` for the title, footer or none.
@@ -80,7 +80,7 @@ struct FolderPeekPanel: View {
                     .frame(height: Self.titleHeight)
             }
             ForEach(Array(layout.rows.enumerated()), id: \.element.id) { index, entry in
-                FolderPeekEntryRow(entry: entry, isHovered: hoveredIndex == index)
+                FolderPreviewEntryRow(entry: entry, isHovered: hoveredIndex == index)
             }
             if let message = layout.message {
                 footer(message)
@@ -100,7 +100,7 @@ struct FolderPeekPanel: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color(red: 0.8, green: 0.8, blue: 0.8), lineWidth: 2)
         )
-        .overlay(FolderPeekMouseArea(
+        .overlay(FolderPreviewMouseArea(
             onHover: { point in
                 let index = point.flatMap(rowIndex(at:))
                 if index != hoveredIndex {
@@ -143,7 +143,7 @@ struct FolderPeekPanel: View {
     }
 }
 
-private struct FolderPeekEntryRow: View {
+private struct FolderPreviewEntryRow: View {
     let entry: CachedFileInfo
     let isHovered: Bool
 
@@ -175,7 +175,7 @@ private struct FolderPeekEntryRow: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: FolderPeekPanel.rowHeight)
+        .frame(height: FolderPreviewDialog.rowHeight)
         .rowHighlight(isHovered: isHovered)
         .padding(.horizontal, 6)
         .opacity(entry.isHidden ? 0.5 : 1.0)

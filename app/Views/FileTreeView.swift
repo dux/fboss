@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Content bounds of the hovered folder row. Anchors resolve at layout time,
-/// so the peek overlay tracks the row through scrolling without any row state.
+/// so the preview overlay tracks the row through scrolling without any row state.
 private struct HoveredFolderAnchorKey: PreferenceKey {
     static let defaultValue: Anchor<CGRect>? = nil
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
@@ -18,7 +18,7 @@ struct FileTreeView: View {
     @State private var isDragOver = false
     @State private var viewportHeight: CGFloat = 0
     @State private var scrollTopIndex: Int = 0
-    @StateObject private var peekModel = FolderPeekModel()
+    @StateObject private var previewModel = FolderPreviewModel()
     @ObservedObject private var contextMenu = ContextMenuManager.shared
 
     private let rowHeight: CGFloat = 32   // icon 22 + vertical padding 10
@@ -117,10 +117,10 @@ struct FileTreeView: View {
                 }
                 .onChange(of: manager.currentPath) { _ in
                     scrollTopIndex = 0
-                    peekModel.dismiss()
+                    previewModel.dismiss()
                 }
                 .onChange(of: contextMenu.isShowing) { showing in
-                    if showing { peekModel.dismiss() }
+                    if showing { previewModel.dismiss() }
                 }
                 .overlay(
                     Group {
@@ -134,7 +134,7 @@ struct FileTreeView: View {
                     .allowsHitTesting(false)
                 )
                 .overlayPreferenceValue(HoveredFolderAnchorKey.self) { anchor in
-                    peekOverlay(anchor: anchor)
+                    previewOverlay(anchor: anchor)
                 }
                 .onDrop(of: [.fileURL, .url], isTargeted: $isDragOver) { providers in
                     handleDrop(providers: providers)
@@ -161,7 +161,7 @@ struct FileTreeView: View {
             FileTreeRow(
                 fileInfo: fileInfo,
                 manager: manager,
-                peek: peekModel,
+                preview: previewModel,
                 index: index,
                 depth: depth,
                 indentStep: indentStep
@@ -170,30 +170,30 @@ struct FileTreeView: View {
         }
     }
 
-    /// Root panel starts halfway across the tree (300 pt at most) and 40 pt above
+    /// Root dialog starts halfway across the tree (300 pt at most) and 40 pt above
     /// the hovered row, so the cursor reaches it by moving right along the row.
-    /// Each deeper panel hangs off the entry row that opened it, overlapping its
+    /// Each deeper dialog hangs off the entry row that opened it, overlapping its
     /// parent a little, and flips to the parent's left when out of room.
-    /// Panels shift up when they would run past the bottom of the tree, and rows
-    /// are capped to what fits so the fold count grows instead of a panel being cut off.
+    /// Dialogs shift up when they would run past the bottom of the tree, and rows
+    /// are capped to what fits so the fold count grows instead of a dialog being cut off.
     @ViewBuilder
-    private func peekOverlay(anchor: Anchor<CGRect>?) -> some View {
-        if peekModel.isShowing, let anchor {
+    private func previewOverlay(anchor: Anchor<CGRect>?) -> some View {
+        if previewModel.isShowing, let anchor {
             GeometryReader { geo in
-                let placed = placePeekPanels(rootRow: geo[anchor], in: geo.size)
+                let placed = placePreviewDialogs(rootRow: geo[anchor], in: geo.size)
                 ForEach(Array(placed.enumerated()), id: \.offset) { level, item in
-                    FolderPeekPanel(
+                    FolderPreviewDialog(
                         layout: item.layout,
-                        onSelect: { entry in openPeekEntry(entry) },
+                        onSelect: { entry in openPreviewEntry(entry) },
                         onOpenFolder: {
-                            peekModel.dismiss()
+                            previewModel.dismiss()
                             manager.navigateTo(item.folder)
                         },
-                        onHover: { peekModel.panelHover(level: level, inside: $0) },
+                        onHover: { previewModel.dialogHover(level: level, inside: $0) },
                         onHoverEntry: { entry in
-                            peekModel.hoverEntry(entry, in: level, showHidden: manager.showHidden, sortMode: manager.sortMode)
+                            previewModel.hoverEntry(entry, in: level, showHidden: manager.showHidden)
                         },
-                        onFrame: { peekModel.panelFrame($0, at: level) }
+                        onFrame: { previewModel.dialogFrame($0, at: level) }
                     )
                     .offset(x: item.frame.minX, y: item.frame.minY)
                 }
@@ -201,26 +201,26 @@ struct FileTreeView: View {
         }
     }
 
-    private struct PlacedPeek {
+    private struct PlacedPreview {
         let folder: URL
-        let layout: FolderPeekPanel.Layout
+        let layout: FolderPreviewDialog.Layout
         let frame: CGRect
     }
 
     /// `rootRow` is the hovered row's content bounds (excludes the row's padding).
-    private func placePeekPanels(rootRow: CGRect, in size: CGSize) -> [PlacedPeek] {
-        let width = FolderPeekPanel.width
-        let rowHeight = FolderPeekPanel.rowHeight
-        let available = size.height - FolderPeekPanel.verticalPadding * 2 - FolderPeekPanel.titleHeight
+    private func placePreviewDialogs(rootRow: CGRect, in size: CGSize) -> [PlacedPreview] {
+        let width = FolderPreviewDialog.width
+        let rowHeight = FolderPreviewDialog.rowHeight
+        let available = size.height - FolderPreviewDialog.verticalPadding * 2 - FolderPreviewDialog.titleHeight
         let maxRows = Int(available / rowHeight)
-        var placed: [PlacedPeek] = []
-        for level in peekModel.levels {
-            let layout = FolderPeekPanel.Layout(peek: level.peek, failure: level.failure, maxRows: maxRows, title: level.folder.lastPathComponent)
+        var placed: [PlacedPreview] = []
+        for level in previewModel.levels {
+            let layout = FolderPreviewDialog.Layout(preview: level.preview, failure: level.failure, maxRows: maxRows, title: level.folder.lastPathComponent)
             var x: CGFloat
             var y: CGFloat
             if let parent = placed.last {
                 guard let index = parent.layout.rows.firstIndex(where: { $0.url == level.folder }) else { break }
-                let entryTop = parent.frame.minY + FolderPeekPanel.verticalPadding + parent.layout.titleHeight + CGFloat(index) * rowHeight
+                let entryTop = parent.frame.minY + FolderPreviewDialog.verticalPadding + parent.layout.titleHeight + CGFloat(index) * rowHeight
                 x = parent.frame.maxX - 24
                 if x + width > size.width - 8 { x = max(0, parent.frame.minX - width + 24) }
                 y = entryTop - 8
@@ -229,13 +229,13 @@ struct FileTreeView: View {
                 y = max(0, rootRow.minY - 40)
             }
             if y + layout.height > size.height { y = max(0, size.height - layout.height) }
-            placed.append(PlacedPeek(folder: level.folder, layout: layout, frame: CGRect(x: x, y: y, width: width, height: layout.height)))
+            placed.append(PlacedPreview(folder: level.folder, layout: layout, frame: CGRect(x: x, y: y, width: width, height: layout.height)))
         }
         return placed
     }
 
-    private func openPeekEntry(_ entry: CachedFileInfo) {
-        peekModel.dismiss()
+    private func openPreviewEntry(_ entry: CachedFileInfo) {
+        previewModel.dismiss()
         manager.reveal(entry.url, isDirectory: entry.isDirectory)
     }
 
@@ -497,7 +497,7 @@ struct FileTreeRow: View {
     @ObservedObject var manager: FileExplorerManager
     @ObservedObject var selection = SelectionManager.shared
     @ObservedObject var tagManager = ColorTagManager.shared
-    @ObservedObject var peek: FolderPeekModel
+    @ObservedObject var preview: FolderPreviewModel
     let index: Int
     let depth: Int
     let indentStep: CGFloat
@@ -621,9 +621,9 @@ struct FileTreeRow: View {
             }
         }
         // The row of the folder on show publishes its anchor. Not the hovered
-        // row: rows under the panel still see the cursor, and a panel that
+        // row: rows under the dialog still see the cursor, and a dialog that
         // followed them would slide out from under it.
-        .anchorPreference(key: HoveredFolderAnchorKey.self, value: .bounds) { peek.shownFolder == url ? $0 : nil }
+        .anchorPreference(key: HoveredFolderAnchorKey.self, value: .bounds) { preview.shownFolder == url ? $0 : nil }
         .padding(.leading, leadingInset)
         .padding(.trailing, 12)
         .padding(.vertical, 5)
@@ -637,9 +637,9 @@ struct FileTreeRow: View {
         .overlay(FileRowMouseArea(
             dragURLs: { dragURLs },
             onClick: handleClick,
-            onMouseDown: { peek.dismiss() },
+            onMouseDown: { preview.dismiss() },
             onHover: handleHover,
-            hoverShield: { peek.panelContains($0) }
+            hoverShield: { preview.dialogContains($0) }
         ))
         .opacity(isHidden ? 0.5 : 1.0)
         .customContextMenu(url: url)
@@ -659,9 +659,9 @@ struct FileTreeRow: View {
         isHovered = inside
         guard isDirectory else { return }
         if inside {
-            peek.hover(folder: url, showHidden: manager.showHidden, sortMode: manager.sortMode)
+            preview.hover(folder: url, showHidden: manager.showHidden)
         } else {
-            peek.leave(folder: url)
+            preview.leave(folder: url)
         }
     }
 
