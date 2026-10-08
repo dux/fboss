@@ -56,12 +56,40 @@ func loadExifMetadata(from url: URL) async -> (metadata: [(key: String, value: S
 }
 
 nonisolated func readExifMetadata(from url: URL) -> [(key: String, value: String)] {
-    var result: [(key: String, value: String)] = []
+    guard let properties = imageProperties(at: url) else { return [] }
+    var result = exifRows(from: properties)
 
-    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else {
-        return result
+    if let coordinate = gpsCoordinate(from: properties) {
+        result.append((key: "GPS", value: String(format: "%.6f, %.6f", coordinate.latitude, coordinate.longitude)))
     }
+    if let gps = properties[kCGImagePropertyGPSDictionary as String] as? [String: Any],
+       let altitude = gps[kCGImagePropertyGPSAltitude as String] as? Double {
+        result.append((key: "Altitude", value: String(format: "%.1f m", altitude)))
+    }
+
+    return result
+}
+
+nonisolated func imageProperties(at url: URL) -> [String: Any]? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    return CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]
+}
+
+/// Signed decimal degrees (south and west negative).
+nonisolated func gpsCoordinate(from properties: [String: Any]) -> (latitude: Double, longitude: Double)? {
+    guard let gps = properties[kCGImagePropertyGPSDictionary as String] as? [String: Any],
+          let lat = gps[kCGImagePropertyGPSLatitude as String] as? Double,
+          let latRef = gps[kCGImagePropertyGPSLatitudeRef as String] as? String,
+          let lon = gps[kCGImagePropertyGPSLongitude as String] as? Double,
+          let lonRef = gps[kCGImagePropertyGPSLongitudeRef as String] as? String else {
+        return nil
+    }
+    return (latRef == "S" ? -lat : lat, lonRef == "W" ? -lon : lon)
+}
+
+/// Pixel and EXIF rows; GPS is left to callers via `gpsCoordinate`.
+nonisolated func exifRows(from properties: [String: Any]) -> [(key: String, value: String)] {
+    var result: [(key: String, value: String)] = []
 
     // Basic image info
     if let width = properties[kCGImagePropertyPixelWidth as String] as? Int,
@@ -135,22 +163,6 @@ nonisolated func readExifMetadata(from url: URL) -> [(key: String, value: String
         if let software = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any],
            let sw = software[kCGImagePropertyTIFFSoftware as String] as? String {
             result.append((key: "Software", value: sw))
-        }
-    }
-
-    // GPS data
-    if let gps = properties[kCGImagePropertyGPSDictionary as String] as? [String: Any] {
-        if let lat = gps[kCGImagePropertyGPSLatitude as String] as? Double,
-           let latRef = gps[kCGImagePropertyGPSLatitudeRef as String] as? String,
-           let lon = gps[kCGImagePropertyGPSLongitude as String] as? Double,
-           let lonRef = gps[kCGImagePropertyGPSLongitudeRef as String] as? String {
-            let latDir = latRef == "N" ? "" : "-"
-            let lonDir = lonRef == "E" ? "" : "-"
-            result.append((key: "GPS", value: "\(latDir)\(String(format: "%.6f", lat)), \(lonDir)\(String(format: "%.6f", lon))"))
-        }
-
-        if let altitude = gps[kCGImagePropertyGPSAltitude as String] as? Double {
-            result.append((key: "Altitude", value: String(format: "%.1f m", altitude)))
         }
     }
 

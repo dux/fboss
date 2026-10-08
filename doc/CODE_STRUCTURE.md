@@ -119,7 +119,10 @@ The writer encodes snapshots on a worker actor and writes atomically after a 300
 The application delegate flushes pending writes before allowing termination and keeps the app open if a save fails.
 
 ### AppSettings (`Models/AppSettings.swift`)
-**Singleton** persisting to `~/.config/dux-file-explorer/settings.json`. Debounced save (300ms). Key settings: font sizes, pane widths, window frame, `preferredApps`, `recentlyUsedApps`, `flatFolders`, `omdbAPIKey`.
+**Singleton** persisting to `~/.config/dux-file-explorer/settings.json`. Debounced save (300ms). Key settings: font sizes, pane widths, window frame, `preferredApps`, `recentlyUsedApps`, `flatFolders`, `imageShowInfo`, `omdbAPIKey`.
+
+### ImageInfo (`Models/ImageInfo.swift`)
+Size, type and EXIF rows plus the GPS coordinate (with its Google Maps URL) shown under the image preview when "Show info" is checked. EXIF parsing is shared with the EXIF metadata sheet through `exifRows` / `gpsCoordinate` in `Views/MetadataSheet.swift`.
 
 ### Other Singletons
 All `@MainActor`:
