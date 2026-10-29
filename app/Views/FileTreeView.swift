@@ -406,7 +406,7 @@ struct AncestorRow: View {
     let isCurrent: Bool
     let indentStep: CGFloat
     @ObservedObject var manager: FileExplorerManager
-    @ObservedObject var selection = SelectionManager.shared
+    @ObservedObject var copies = CopyManager.shared
     @ObservedObject var shortcutsManager = ShortcutsManager.shared
     @ObservedObject var folderIconManager = FolderIconManager.shared
 
@@ -420,9 +420,9 @@ struct AncestorRow: View {
         isCurrent && manager.selectedIndex == -1 && manager.selectedItem == url && !manager.sidebarFocused && !manager.rightPaneFocused
     }
 
-    private var isInSelection: Bool {
-        let _ = selection.version
-        return manager.isInSelection(url)
+    private var isCopied: Bool {
+        let _ = copies.version
+        return manager.isCopied(url)
     }
 
     private var isPinned: Bool {
@@ -474,7 +474,7 @@ struct AncestorRow: View {
             isSelected: isSelected,
             isFocused: isFocusedRow,
             isHovered: isHovered,
-            isInSelection: isInSelection
+            isCopied: isCopied
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
@@ -495,13 +495,14 @@ struct AncestorRow: View {
 struct FileTreeRow: View {
     let fileInfo: CachedFileInfo
     @ObservedObject var manager: FileExplorerManager
-    @ObservedObject var selection = SelectionManager.shared
+    @ObservedObject var copies = CopyManager.shared
     @ObservedObject var tagManager = ColorTagManager.shared
     @ObservedObject var preview: FolderPreviewModel
     let index: Int
     let depth: Int
     let indentStep: CGFloat
     @State private var isHovered = false
+    @State private var badgeFrame: CGRect?
 
     private var url: URL { fileInfo.url }
     private var isDirectory: Bool { fileInfo.isDirectory }
@@ -515,9 +516,9 @@ struct FileTreeRow: View {
         !manager.sidebarFocused && !manager.rightPaneFocused
     }
 
-    private var isInSelection: Bool {
-        let _ = selection.version
-        return manager.isInSelection(url)
+    private var isCopied: Bool {
+        let _ = copies.version
+        return manager.isCopied(url)
     }
 
     private var isHidden: Bool { fileInfo.isHidden }
@@ -590,10 +591,13 @@ struct FileTreeRow: View {
 
             // Gitignored entries mute the icon and name only, so a selected
             // row keeps its full highlight
-            Text(fileInfo.name)
-                .textStyle(.default)
-                .lineLimit(1)
-                .foregroundColor(isIgnored ? .secondary : .primary)
+            HStack(spacing: 3) {
+                Text(fileInfo.name)
+                    .textStyle(.default)
+                    .lineLimit(1)
+                    .foregroundColor(isIgnored ? .secondary : .primary)
+                SymlinkBadge(link: fileInfo.link)
+            }
 
             if !fileColors.isEmpty {
                 HStack(spacing: 2) {
@@ -631,25 +635,29 @@ struct FileTreeRow: View {
             isSelected: isSelected,
             isFocused: isSelected && isCentralPaneFocused,
             isHovered: isHovered,
-            isInSelection: isInSelection
+            isCopied: isCopied
         )
         .contentShape(Rectangle())
+        .coordinateSpace(name: SymlinkBadge.space)
+        .onPreferenceChange(SymlinkBadgeFrameKey.self) { badgeFrame = $0 }
         .overlay(FileRowMouseArea(
             dragURLs: { dragURLs },
             onClick: handleClick,
             onMouseDown: { preview.dismiss() },
             onHover: handleHover,
-            hoverShield: { preview.dialogContains($0) }
+            hoverShield: { preview.dialogContains($0) },
+            tooltip: fileInfo.link.map(SymlinkBadge.tooltip(for:)),
+            tooltipRect: badgeFrame
         ))
         .opacity(isHidden ? 0.5 : 1.0)
         .customContextMenu(url: url)
     }
 
-    // Dragging a row that is part of the green selection drags the whole
-    // selection. Remote rows have no file URL to promise, so they don't drag.
+    // Dragging a row that is part of the green copied set drags the whole
+    // set. Remote rows have no file URL to promise, so they don't drag.
     private var dragURLs: [URL] {
-        if isInSelection {
-            let urls = selection.sortedItems.compactMap { $0.localURL }
+        if isCopied {
+            let urls = copies.sortedItems.compactMap { $0.localURL }
             if !urls.isEmpty { return urls }
         }
         return url.isFileURL ? [url] : []
@@ -667,14 +675,14 @@ struct FileTreeRow: View {
 
     private func handleClick(at point: CGPoint, clickCount: Int, modifiers: NSEvent.ModifierFlags) {
         if modifiers.contains(.command) {
-            // Cmd+click: toggle in green selection
-            manager.toggleFileSelection(url)
+            // Cmd+click: toggle in green copied set
+            manager.toggleCopy(url)
             manager.selectItem(at: index, url: url)
             return
         }
         if modifiers.contains(.shift) {
-            // Shift+click: add range from cursor to clicked row
-            manager.selectRange(to: index)
+            // Shift+click: copy range from cursor to clicked row
+            manager.copyRange(to: index)
             return
         }
         if clickCount >= 2 {

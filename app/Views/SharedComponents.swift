@@ -362,32 +362,75 @@ struct MetadataTableView: View {
     }
 }
 
-// MARK: - Reusable Selection File List
+// MARK: - Symlink Badge
 
-/// A reusable scrollable list of selected files. Can be embedded in any pane.
-struct SelectionFileList: View {
-    @ObservedObject var selection: SelectionManager
-    var maxVisible: Int = 6
+/// Placed right after a listed name when the entry is a symbolic link; red when its
+/// target is missing. Never compresses, so a truncated name keeps the badge visible.
+/// Rows covered by `FileRowMouseArea` never see `.help`, so the badge also reports its
+/// frame in `SymlinkBadge.space` for the overlay to register as an AppKit tooltip rect.
+struct SymlinkBadge: View {
+    static let space = "symlinkBadgeRow"
 
-    private var selectedItems: [FileItem] { selection.sortedItems }
+    let link: SymlinkInfo?
+    var style: TextStyle = .default
 
     var body: some View {
-        if !selection.isEmpty {
+        if let link {
+            Image(systemName: "arrow.turn.up.right")
+                .textStyle(style)
+                .imageScale(.small)
+                .foregroundColor(link.isBroken ? .red : .secondary)
+                .fixedSize()
+                .help(Self.tooltip(for: link))
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: SymlinkBadgeFrameKey.self, value: proxy.frame(in: .named(Self.space)))
+                })
+        }
+    }
+
+    static func tooltip(for link: SymlinkInfo) -> String {
+        guard var target = link.target else { return "Symlink" }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if target == home || target.hasPrefix(home + "/") {
+            target = "~" + target.dropFirst(home.count)
+        }
+        return "Symlink from \(target)" + (link.isBroken ? " (missing)" : "")
+    }
+}
+
+struct SymlinkBadgeFrameKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        value = value ?? nextValue()
+    }
+}
+
+// MARK: - Reusable Copied File List
+
+/// A reusable scrollable list of copied files. Can be embedded in any pane.
+struct CopiedFileList: View {
+    @ObservedObject var copies: CopyManager
+    var maxVisible: Int = 6
+
+    private var copiedItems: [FileItem] { copies.sortedItems }
+
+    var body: some View {
+        if !copies.isEmpty {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
-                    ForEach(selectedItems, id: \.id) { item in
-                        SelectionFileRow(item: item, selection: selection)
+                    ForEach(copiedItems, id: \.id) { item in
+                        CopiedFileRow(item: item, copies: copies)
                     }
                 }
             }
-            .frame(maxHeight: CGFloat(min(selectedItems.count, maxVisible)) * 26)
+            .frame(maxHeight: CGFloat(min(copiedItems.count, maxVisible)) * 26)
         }
     }
 }
 
-struct SelectionFileRow: View {
+struct CopiedFileRow: View {
     let item: FileItem
-    @ObservedObject var selection: SelectionManager
+    @ObservedObject var copies: CopyManager
     @State private var isHovered = false
 
     private var sourceFolder: String {
@@ -429,10 +472,13 @@ struct SelectionFileRow: View {
                     .frame(width: 16, height: 16)
             }
 
-            Text(item.name)
-                .textStyle(.small)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            HStack(spacing: 3) {
+                Text(item.name)
+                    .textStyle(.small)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                SymlinkBadge(link: item.link, style: .small)
+            }
 
             Text(sourceFolder)
                 .textStyle(.small)
@@ -442,18 +488,20 @@ struct SelectionFileRow: View {
 
             Spacer()
 
-            if isHovered {
-                Button(action: { selection.remove(item) }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
+            Button(action: { copies.remove(item) }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
             }
+            .buttonStyle(.plain)
+            .opacity(isHovered ? 1 : 0)
+            .allowsHitTesting(isHovered)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(isHovered ? Color.green.opacity(0.06) : Color.clear)
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
 }

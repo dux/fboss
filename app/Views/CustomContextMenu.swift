@@ -211,7 +211,7 @@ private struct CustomContextMenuContent: View {
         { contextMenu.dismissAndRun(action) }
     }
 
-    @ObservedObject private var selection = SelectionManager.shared
+    @ObservedObject private var copies = CopyManager.shared
 
     @State private var hoveredColorRow = false
     @State private var hoveredColorSubmenu = false
@@ -226,9 +226,9 @@ private struct CustomContextMenuContent: View {
             return pinnedFolderMenuItems(pinnedIndex: pinnedIndex)
         }
         var items: [MenuItem] = []
-        if isDirectory && itemCaps.contains(.write) && !selection.isEmpty {
-            let count = selection.count
-            items.append(MenuItem(icon: "doc.on.doc", label: "Copy \(count) here", isDestructive: false,
+        if isDirectory && itemCaps.contains(.write) && !copies.isEmpty {
+            let count = copies.count
+            items.append(MenuItem(icon: "doc.on.doc", label: "Paste \(count) here", isDestructive: false,
                                   isColor: false, tagColor: nil, isTagged: false, action: act { [url] in
                 manager.transferItems(to: url)
                                   }))
@@ -247,11 +247,12 @@ private struct CustomContextMenuContent: View {
             }))
         }
         if !isCurrentFolder {
+            let toggle = manager.copyToggleLabel(for: url)
             items.append(MenuItem(
-                icon: manager.isInSelection(url) ? "minus.circle" : "checkmark.circle",
-                label: manager.isInSelection(url) ? "Remove from Selection" : "Add to Selection (copy)",
+                icon: toggle.icon,
+                label: toggle.label,
                 isDestructive: false, isColor: false, tagColor: nil, isTagged: false, action: act {
-                    manager.toggleFileSelection(url)
+                    manager.toggleCopy(url)
                 }
             ))
         }
@@ -451,7 +452,7 @@ private struct CustomContextMenuContent: View {
 
     @ViewBuilder
     private func menuRowView(item: MenuItem, index: Int, items: [MenuItem], showColorSubmenu: Bool) -> some View {
-        let needsDivider = index == sectionBreakAfterSelection(items)
+        let needsDivider = index == sectionBreakAfterCopyToggle(items)
             || index == sectionBreakAfterCopyPath(items)
             || index == sectionBreakAfterCreateFile(items)
             || index == sectionBreak2(items)
@@ -472,7 +473,7 @@ private struct CustomContextMenuContent: View {
         }
     }
 
-    private func sectionBreakAfterSelection(_ items: [MenuItem]) -> Int {
+    private func sectionBreakAfterCopyToggle(_ items: [MenuItem]) -> Int {
         guard let idx = items.firstIndex(where: { $0.label == "View Details" }) else { return -1 }
         return idx > 0 ? idx : -1
     }

@@ -92,7 +92,8 @@ final class SSHFileSource: FileSystemSource, Sendable {
                 isDirectory: entry.isDirectory,
                 size: entry.size,
                 modDate: entry.modDate,
-                isHidden: entry.name.hasPrefix(".")
+                isHidden: entry.name.hasPrefix("."),
+                link: entry.isSymlink ? SymlinkInfo(target: nil, isBroken: entry.isBrokenLink) : nil
             )
         }
     }

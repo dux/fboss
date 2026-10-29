@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Monitors the system clipboard for file URLs copied in Finder.
-/// When files are detected, they are automatically added to the global selection.
+/// When files are detected, they are automatically added to the copied files.
 @MainActor
 class ClipboardMonitor {
     static let shared = ClipboardMonitor()
@@ -37,11 +37,10 @@ class ClipboardMonitor {
             return
         }
 
-        let selection = SelectionManager.shared
-        let added = selection.addLocals(urls)
+        let added = CopyManager.shared.addLocals(urls)
 
         if added > 0 {
-            ToastManager.shared.show("Clipboard: added \(added) file\(added == 1 ? "" : "s") to selection")
+            ToastManager.shared.show("Clipboard: copied \(added) file\(added == 1 ? "" : "s")")
         }
     }
 }

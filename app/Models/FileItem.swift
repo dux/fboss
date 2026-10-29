@@ -16,6 +16,7 @@ struct FileItem: Identifiable, Hashable, Sendable {
     let size: Int64
     let modifiedDate: Date?
     let source: FileSource
+    var link: SymlinkInfo?
 
     // For local files
     var localURL: URL? {
@@ -58,18 +59,16 @@ struct FileItem: Identifiable, Hashable, Sendable {
         }
     }
 
-    // Create from local URL
+    // Create from local URL. A symlink counts even when its target is missing:
+    // transfers copy and move the link itself.
     static func fromLocal(_ url: URL) -> Self? {
+        let fm = FileManager.default
+        guard let attrs = try? fm.attributesOfItem(atPath: url.path) else { return nil }
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return nil }
-
-        var size: Int64 = 0
-        var modDate: Date?
-
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) {
-            size = attrs[.size] as? Int64 ?? 0
-            modDate = attrs[.modificationDate] as? Date
-        }
+        let resolves = fm.fileExists(atPath: url.path, isDirectory: &isDir)
+        let size = attrs[.size] as? Int64 ?? 0
+        let modDate = attrs[.modificationDate] as? Date
+        let isLink = attrs[.type] as? FileAttributeType == .typeSymbolicLink
 
         return Self(
             id: url.path,
@@ -78,7 +77,12 @@ struct FileItem: Identifiable, Hashable, Sendable {
             isDirectory: isDir.boolValue,
             size: size,
             modifiedDate: modDate,
-            source: .local
+            source: .local,
+            link: isLink ? SymlinkInfo(
+                target: (try? fm.destinationOfSymbolicLink(atPath: url.path))
+                    .map { SymlinkInfo.absoluteTarget($0, parentPath: url.deletingLastPathComponent().path) },
+                isBroken: !resolves
+            ) : nil
         )
     }
 
@@ -99,7 +103,8 @@ struct FileItem: Identifiable, Hashable, Sendable {
                 path: afcPath,
                 isDirectory: info.isDirectory,
                 size: info.size,
-                modifiedDate: info.modDate
+                modifiedDate: info.modDate,
+                link: info.link
             )
             return fromIPhone(file, deviceId: udid, appId: bundleId, appName: source?.appName(for: bundleId) ?? bundleId)
         default:
@@ -115,7 +120,8 @@ struct FileItem: Identifiable, Hashable, Sendable {
             isDirectory: info.isDirectory,
             size: info.size,
             modifiedDate: info.modDate,
-            source: .remote(info.url)
+            source: .remote(info.url),
+            link: info.link
         )
     }
 
@@ -140,7 +146,8 @@ struct FileItem: Identifiable, Hashable, Sendable {
             isDirectory: file.isDirectory,
             size: file.size,
             modifiedDate: file.modifiedDate,
-            source: .iPhone(deviceId: deviceId, appId: appId, appName: appName)
+            source: .iPhone(deviceId: deviceId, appId: appId, appName: appName),
+            link: file.link
         )
     }
 

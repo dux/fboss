@@ -94,6 +94,7 @@ struct ColorTagFileRow: View {
             exists: file.exists,
             parentPath: file.parentPath,
             isSelected: manager.selectedItem == file.url,
+            link: file.link,
             showRemove: true,
             onRemove: { tagManager.untagFile(file.url, color: color) }
         )

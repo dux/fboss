@@ -20,7 +20,7 @@ final class LocalFileSource: FileSystemSource {
     private let home = FileManager.default.homeDirectoryForCurrentUser
 
     private static let resourceKeys: Set<URLResourceKey> = [
-        .isDirectoryKey, .contentModificationDateKey, .fileSizeKey, .isHiddenKey
+        .isDirectoryKey, .contentModificationDateKey, .fileSizeKey, .isHiddenKey, .isSymbolicLinkKey
     ]
 
     /// Directories with at most this many entries load synchronously so ordinary
@@ -125,13 +125,29 @@ final class LocalFileSource: FileSystemSource {
     nonisolated private static func entry(for url: URL) -> SourceEntry {
         let values = try? url.resourceValues(forKeys: resourceKeys)
         let hidden = url.lastPathComponent.hasPrefix(".") || (values?.isHidden ?? false)
+        // Resource values describe a link itself; a link to a folder browses as
+        // that folder (through the link path), like Finder.
+        let link = values?.isSymbolicLink == true ? linkInfo(for: url) : nil
+        let isDirectory = link?.targetIsDirectory ?? (values?.isDirectory ?? false)
         return SourceEntry(
             url: url,
-            isDirectory: values?.isDirectory ?? false,
-            size: Int64(values?.fileSize ?? 0),
+            isDirectory: isDirectory,
+            size: isDirectory ? 0 : Int64(values?.fileSize ?? 0),
             modDate: values?.contentModificationDate,
-            isHidden: hidden
+            isHidden: hidden,
+            link: link?.info
         )
+    }
+
+    /// One readlink plus one following stat, paid only by symlinks.
+    nonisolated private static func linkInfo(for url: URL) -> (info: SymlinkInfo, targetIsDirectory: Bool) {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        let resolves = fm.fileExists(atPath: url.path, isDirectory: &isDir)
+        let target = (try? fm.destinationOfSymbolicLink(atPath: url.path))
+            .map { SymlinkInfo.absoluteTarget($0, parentPath: url.deletingLastPathComponent().path) }
+        let info = SymlinkInfo(target: target, isBroken: !resolves)
+        return (info, resolves && isDir.boolValue)
     }
 
     /// Fallback directory listing using /bin/ls for TCC-protected folders

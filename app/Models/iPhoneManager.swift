@@ -21,6 +21,7 @@ struct iPhoneFile: Identifiable, Hashable {
     let isDirectory: Bool
     let size: Int64
     let modifiedDate: Date?
+    var link: SymlinkInfo?
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(path)
@@ -34,7 +35,7 @@ struct iPhoneFile: Identifiable, Hashable {
 /// Device discovery + shared AFC plumbing. Browsing goes through
 /// iPhoneFileSource and the main browser pane; this manager only scans for
 /// devices (sidebar rows) and hosts the context-explicit transfer ops used
-/// by SelectionManager and the adapter.
+/// by CopyManager and the adapter.
 @MainActor
 class iPhoneManager: ObservableObject {
     static let shared = iPhoneManager()

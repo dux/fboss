@@ -168,7 +168,8 @@ extension FileExplorerManager {
                         size: entry.size,
                         modDate: entry.modDate,
                         isHidden: entry.isHidden,
-                        displayName: entry.displayName
+                        displayName: entry.displayName,
+                        link: entry.link
                     ))
 
                     if batch.count >= batchSize {

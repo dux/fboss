@@ -269,18 +269,18 @@ class KeyCaptureView: NSView {
         switch event.keyCode {
         case 0:
             if event.modifierFlags.contains(.control) || event.modifierFlags.contains(.command) {
-                manager.selectAllFiles()
+                manager.copyAllFiles()
                 return true
             }
         case 8: // C key
             if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) {
-                guard !manager.selection.isEmpty else { return false }
+                guard !manager.copies.isEmpty else { return false }
                 manager.transferItems()
                 return true
             }
             if event.modifierFlags.contains(.control) {
                 if let item = manager.selectedItem {
-                    manager.toggleFileSelection(item)
+                    manager.toggleCopy(item)
                 }
                 return true
             }
@@ -310,7 +310,7 @@ class KeyCaptureView: NSView {
             navigateIntoSelectedDirectoryIfNeeded(manager)
             return true
         case 49:
-            manager.toggleGlobalSelection()
+            manager.toggleCopyAtCursor()
             return true
         case 36:
             if manager.selectedItem != nil {
@@ -337,9 +337,7 @@ class KeyCaptureView: NSView {
             if manager.previewBack() {
                 return true
             }
-            if manager.browserViewMode != .files {
-                manager.browserViewMode = .files
-            } else if manager.selectedItem != nil {
+            if manager.selectedItem != nil {
                 manager.selectedItem = nil
                 manager.selectedIndex = -1
             }
@@ -347,9 +345,9 @@ class KeyCaptureView: NSView {
         case 47: // Period key - show context menu
             showContextMenuForSelected(manager)
             return true
-        case 9: // V key - Cmd+Shift+V: move selection here
+        case 9: // V key - Cmd+Shift+V: move copied here
             if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) {
-                guard !manager.selection.isEmpty else { return false }
+                guard !manager.copies.isEmpty else { return false }
                 manager.transferItems(move: true)
                 return true
             }
@@ -360,11 +358,11 @@ class KeyCaptureView: NSView {
             }
         case 2: // D key - Cmd+Shift+D: duplicate
             if event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift) {
-                let selection = SelectionManager.shared
-                let locals = selection.items.filter { if case .local = $0.source { return true } else { return false } }
+                let copies = manager.copies
+                let locals = copies.localItems
                 guard locals.count == 1, let url = locals.first?.localURL else { return false }
                 manager.promptDuplicate(url)
-                selection.clear()
+                copies.clear()
                 return true
             }
         default:

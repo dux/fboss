@@ -160,10 +160,13 @@ private struct FolderPreviewEntryRow: View {
                     .opacity(entry.isIgnored ? 0.45 : 1.0)
             }
 
-            Text(entry.name)
-                .textStyle(.default)
-                .lineLimit(1)
-                .foregroundColor(entry.isIgnored ? .secondary : .primary)
+            HStack(spacing: 3) {
+                Text(entry.name)
+                    .textStyle(.default)
+                    .lineLimit(1)
+                    .foregroundColor(entry.isIgnored ? .secondary : .primary)
+                SymlinkBadge(link: entry.link)
+            }
 
             Spacer()
 

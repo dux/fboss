@@ -128,7 +128,8 @@ extension FileExplorerManager {
                 modDate: entry.modDate,
                 isHidden: entry.isHidden,
                 displayName: entry.displayName,
-                isIgnored: ignore?.isIgnored(name: entry.url.lastPathComponent, isDirectory: entry.isDirectory) ?? false
+                isIgnored: ignore?.isIgnored(name: entry.url.lastPathComponent, isDirectory: entry.isDirectory) ?? false,
+                link: entry.link
             )
 
             if entry.isDirectory {
@@ -212,8 +213,8 @@ extension FileExplorerManager {
         let previous = selectedItem
         directories = Self.sortItems(directories.map { info in
             guard let size = sizes[info.url.path], size != info.size else { return info }
-            return CachedFileInfo(url: info.url, isDirectory: info.isDirectory, size: size,
-                                  modDate: info.modDate, isHidden: info.isHidden, displayName: info.displayName, isIgnored: info.isIgnored)
+            return CachedFileInfo(url: info.url, isDirectory: info.isDirectory, size: size, modDate: info.modDate, isHidden: info.isHidden,
+                                  displayName: info.displayName, isIgnored: info.isIgnored, link: info.link)
         }, sortMode: .size)
         // Sorting can move the selected row
         if let previous, let index = allItems.firstIndex(where: { $0.url == previous }) {

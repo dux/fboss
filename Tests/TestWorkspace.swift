@@ -22,6 +22,6 @@ func makeTestSettings() -> AppSettings {
 }
 
 @MainActor
-func makeTestManager(selection: SelectionManager = SelectionManager()) -> FileExplorerManager {
-    FileExplorerManager(settings: makeTestSettings(), selection: selection)
+func makeTestManager(copies: CopyManager = CopyManager()) -> FileExplorerManager {
+    FileExplorerManager(settings: makeTestSettings(), copies: copies)
 }

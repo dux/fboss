@@ -2,28 +2,28 @@ import Foundation
 
 extension FileExplorerManager {
     func transferItems(_ items: [FileItem]? = nil, to destination: URL? = nil, move: Bool = false) {
-        let snapshot = items ?? selection.sortedItems
+        let snapshot = items ?? copies.sortedItems
         guard !snapshot.isEmpty else { return }
         let target = destination ?? currentPath
-        let coordinator = SelectionTransfer(selection: selection, transfer: FileTransfer(skipFolders: Set(settings.copySkipFolders))) {
+        let coordinator = CopyTransfer(copies: copies, transfer: FileTransfer(skipFolders: Set(settings.copySkipFolders))) {
             SourceRegistry.shared.source(for: $0)
         }
-        runSelectionOperation(title: move ? "Moving files" : "Copying files", verb: move ? "Moved" : "Copied") {
+        runCopyOperation(title: move ? "Moving files" : "Pasting files", verb: move ? "Moved" : "Pasted") {
             await coordinator.run(snapshot, to: target, move: move)
         }
     }
 
-    func trashSelection() {
-        let snapshot = selection.localItems
+    func trashCopied() {
+        let snapshot = copies.localItems
         guard !snapshot.isEmpty else { return }
-        let coordinator = SelectionTransfer(selection: selection, transfer: FileTransfer()) {
+        let coordinator = CopyTransfer(copies: copies, transfer: FileTransfer()) {
             SourceRegistry.shared.source(for: $0)
         }
-        runSelectionOperation(title: "Moving to Trash", verb: "Trashed") { await coordinator.delete(snapshot) }
+        runCopyOperation(title: "Moving to Trash", verb: "Trashed") { await coordinator.delete(snapshot) }
     }
 
-    private func runSelectionOperation(title: String, verb: String,
-                                       work: @escaping @MainActor () async -> SelectionTransfer.Result) {
+    private func runCopyOperation(title: String, verb: String,
+                                  work: @escaping @MainActor () async -> CopyTransfer.Result) {
         transferTask?.cancel()
         let task = Task { [weak self] in
             let result = await work()

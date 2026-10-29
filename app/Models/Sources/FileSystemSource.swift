@@ -1,6 +1,20 @@
 import Foundation
 
 // SourceEntry + FileSystemSource protocol + registry
+
+/// A listed entry that is a symbolic link. `target` is nil when the backend's
+/// listing does not expose it; `isBroken` is only set when the listing knows.
+struct SymlinkInfo: Sendable, Hashable {
+    let target: String?
+    let isBroken: Bool
+
+    /// A relative readlink result made absolute against the link's folder; further
+    /// links in the target are not resolved.
+    static func absoluteTarget(_ target: String, parentPath: String) -> String {
+        URL(fileURLWithPath: target, relativeTo: URL(fileURLWithPath: parentPath, isDirectory: true)).standardizedFileURL.path
+    }
+}
+
 struct SourceEntry: Sendable {
     let url: URL
     let displayName: String?
@@ -8,14 +22,16 @@ struct SourceEntry: Sendable {
     let size: Int64
     let modDate: Date?
     let isHidden: Bool
+    let link: SymlinkInfo?
 
-    init(url: URL, displayName: String? = nil, isDirectory: Bool, size: Int64, modDate: Date?, isHidden: Bool) {
+    init(url: URL, displayName: String? = nil, isDirectory: Bool, size: Int64, modDate: Date?, isHidden: Bool, link: SymlinkInfo? = nil) {
         self.url = url
         self.displayName = displayName
         self.isDirectory = isDirectory
         self.size = size
         self.modDate = modDate
         self.isHidden = isHidden
+        self.link = link
     }
 }
 
@@ -65,7 +81,7 @@ final class SourceWatchToken: Sendable {
 
 /// Contract every browsable backend implements (local disk, iPhone/AFC, later
 /// ssh/ftp). URLs are the currency; the scheme identifies the backend so
-/// history and selection survive across sources. Listing is async-first; the
+/// history and copied files survive across sources. Listing is async-first; the
 /// two `*Sync` hooks exist so the local backend keeps its no-flicker inline
 /// load and its synchronous navigation gate.
 protocol FileSystemSource: AnyObject, Sendable {
@@ -120,7 +136,7 @@ extension FileSystemSource {
 }
 
 /// Resolves the backend for a URL by scheme. URLs are self-describing, so
-/// back/forward history and cross-source selections need no extra state.
+/// back/forward history and cross-source copies need no extra state.
 @MainActor
 final class SourceRegistry {
     static let shared = SourceRegistry()

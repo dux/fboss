@@ -22,6 +22,11 @@ struct FileRowMouseArea: NSViewRepresentable {
     /// whether a `locationInWindow` is covered, and a covered cursor counts as
     /// not hovering.
     var hoverShield: (@MainActor (CGPoint) -> Bool)? = nil
+    /// SwiftUI `.help` underneath never fires for the same reason as hover, so a
+    /// tooltip is registered here for `tooltipRect` only (top-left origin, in this
+    /// view's SwiftUI coordinates).
+    var tooltip: String? = nil
+    var tooltipRect: CGRect? = nil
 
     func makeNSView(context: Context) -> MouseAreaNSView {
         let view = MouseAreaNSView()
@@ -30,6 +35,7 @@ struct FileRowMouseArea: NSViewRepresentable {
         view.onMouseDown = onMouseDown
         view.onHover = onHover
         view.hoverShield = hoverShield
+        view.setTooltip(tooltip, in: tooltipRect)
         return view
     }
 
@@ -39,9 +45,10 @@ struct FileRowMouseArea: NSViewRepresentable {
         nsView.onMouseDown = onMouseDown
         nsView.onHover = onHover
         nsView.hoverShield = hoverShield
+        nsView.setTooltip(tooltip, in: tooltipRect)
     }
 
-    class MouseAreaNSView: NSView, NSDraggingSource {
+    class MouseAreaNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
         var dragURLs: (@MainActor () -> [URL])?
         var onClick: (@MainActor (CGPoint, Int, NSEvent.ModifierFlags) -> Void)?
         var onMouseDown: (@MainActor () -> Void)?
@@ -50,6 +57,34 @@ struct FileRowMouseArea: NSViewRepresentable {
         private var mouseDownEvent: NSEvent?
         private var trackingArea: NSTrackingArea?
         private var reportedHover = false
+        private var tooltipText: String?
+        private var tooltipRect: CGRect?
+
+        func setTooltip(_ text: String?, in rect: CGRect?) {
+            guard text != tooltipText || rect != tooltipRect else { return }
+            tooltipText = text
+            tooltipRect = rect
+            registerTooltip()
+        }
+
+        // The rect arrives top-left based; flip it whenever the height changes.
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            registerTooltip()
+        }
+
+        private func registerTooltip() {
+            removeAllToolTips()
+            guard let tooltipText, let rect = tooltipRect, !rect.isEmpty else { return }
+            let y = isFlipped ? rect.minY : bounds.height - rect.maxY
+            addToolTip(NSRect(x: rect.minX, y: y, width: rect.width, height: rect.height), owner: self, userData: nil)
+        }
+
+        // addToolTip does not retain its owner, so the view answers for the text itself.
+        func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint,
+                  userData data: UnsafeMutableRawPointer?) -> String {
+            tooltipText ?? ""
+        }
 
         // Leave right clicks to the RightClickableArea overlay above
         override func hitTest(_ point: NSPoint) -> NSView? {

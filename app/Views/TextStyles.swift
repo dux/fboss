@@ -73,14 +73,14 @@ extension View {
     /// States (priority high to low):
     /// - `isFocused`: accent border, clear fill (keyboard selection in active pane)
     /// - `isSelected`: light blue fill, no border (selected but pane not focused)
-    /// - `isInSelection`: green fill (global selection set)
+    /// - `isCopied`: green fill (global copied set)
     /// - `isHovered`: subtle gray fill
     /// - default: clear
     func rowHighlight(
         isSelected: Bool = false,
         isFocused: Bool = false,
         isHovered: Bool = false,
-        isInSelection: Bool = false
+        isCopied: Bool = false
     ) -> some View {
         self
             .background(
@@ -89,7 +89,7 @@ extension View {
                         isSelected: isSelected,
                         isFocused: isFocused,
                         isHovered: isHovered,
-                        isInSelection: isInSelection
+                        isCopied: isCopied
                     ))
             )
             .overlay(
@@ -99,18 +99,18 @@ extension View {
     }
 }
 
-// MARK: - Selection Colors
+// MARK: - Row Highlight Colors
 
 enum RowHighlightStyle {
     static func fill(
         isSelected: Bool,
         isFocused: Bool,
         isHovered: Bool,
-        isInSelection: Bool
+        isCopied: Bool
     ) -> Color {
-        if isFocused { return isInSelection ? Color.green.opacity(0.15) : .clear }
+        if isFocused { return isCopied ? Color.green.opacity(0.15) : .clear }
         if isSelected { return Color.accentColor.opacity(0.18) }
-        if isInSelection { return Color.green.opacity(0.15) }
+        if isCopied { return Color.green.opacity(0.15) }
         if isHovered { return Color.gray.opacity(0.1) }
         return .clear
     }

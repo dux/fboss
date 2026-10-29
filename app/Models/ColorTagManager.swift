@@ -27,6 +27,7 @@ struct TaggedFile: Identifiable {
     let url: URL
     let exists: Bool
     let isDirectory: Bool
+    var link: SymlinkInfo?
 
     var id: String { url.path }
     var name: String { url.lastPathComponent }
@@ -121,7 +122,11 @@ final class ColorTagManager: ObservableObject {
             let url = URL(fileURLWithPath: path)
             var isDir: ObjCBool = false
             let exists = fm.fileExists(atPath: path, isDirectory: &isDir)
-            return TaggedFile(url: url, exists: exists, isDirectory: isDir.boolValue)
+            // readlink fails at once on anything that is not a link
+            let link = (try? fm.destinationOfSymbolicLink(atPath: path)).map {
+                SymlinkInfo(target: SymlinkInfo.absoluteTarget($0, parentPath: url.deletingLastPathComponent().path), isBroken: !exists)
+            }
+            return TaggedFile(url: url, exists: exists, isDirectory: isDir.boolValue, link: link)
         }
     }
 

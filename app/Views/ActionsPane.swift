@@ -4,7 +4,7 @@ import AppKit
 struct ActionsPane: View {
     @ObservedObject var manager: FileExplorerManager
     @ObservedObject var settings = AppSettings.shared
-    @ObservedObject private var selection = SelectionManager.shared
+    @ObservedObject private var copies = CopyManager.shared
     @ObservedObject private var gitRepo = GitRepoManager.shared
     @ObservedObject private var npmPackage = NpmPackageManager.shared
     @State private var allApps: [AppInfo] = []
@@ -298,7 +298,7 @@ struct ActionsPane: View {
     }
 
     var body: some View {
-        let _ = selection.version
+        let _ = copies.version
         let paneItems = buildRightPaneItems()
 
         VStack(alignment: .leading, spacing: 0) {
@@ -352,9 +352,8 @@ struct ActionsPane: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
-            // Selection section (shown when items are selected)
-            if !selection.items.isEmpty {
-                SelectionSection(manager: manager, selection: selection)
+            if !copies.items.isEmpty {
+                CopiedSection(manager: manager, copies: copies)
             }
 
             actionButtonsSection(paneItems: paneItems)
@@ -840,14 +839,14 @@ struct PreferredAppButton: View {
     }
 }
 
-// MARK: - Selection Section (in right pane)
+// MARK: - Copied Section (in right pane)
 
-struct SelectionSection: View {
+struct CopiedSection: View {
     @ObservedObject var manager: FileExplorerManager
-    @ObservedObject var selection: SelectionManager
+    @ObservedObject var copies: CopyManager
 
-    private var selectedItems: [FileItem] { selection.sortedItems }
-    private var localItems: [FileItem] { selection.localItems }
+    private var copiedItems: [FileItem] { copies.sortedItems }
+    private var localItems: [FileItem] { copies.localItems }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -856,29 +855,29 @@ struct SelectionSection: View {
             // Action buttons row
             HStack(spacing: 5) {
                 if manager.currentSource.capabilities(at: manager.currentPath).contains(.write) {
-                    SelectionBarButton(title: "Copy to", icon: "doc.on.doc", color: .blue, shortcut: "Copy here (Cmd+Shift+C)") {
+                    CopiedBarButton(title: "Paste here", icon: "doc.on.doc", color: .blue, shortcut: "Paste here (Cmd+Shift+C)") {
                         manager.transferItems()
                     }
-                    SelectionBarButton(title: "Move to", icon: "folder", color: .orange, shortcut: "Move here (Cmd+Shift+V)") {
+                    CopiedBarButton(title: "Move here", icon: "folder", color: .orange, shortcut: "Move here (Cmd+Shift+V)") {
                         manager.transferItems(move: true)
                     }
                 }
                 if !localItems.isEmpty {
-                    SelectionBarButton(title: "Trash", icon: "trash", color: .red) {
-                        manager.trashSelection()
+                    CopiedBarButton(title: "Trash", icon: "trash", color: .red) {
+                        manager.trashCopied()
                     }
                 }
 
                 if localItems.count == 1, let url = localItems.first?.localURL {
-                    SelectionBarButton(title: "Duplicate", icon: "plus.square.on.square", color: .purple, shortcut: "Duplicate (Cmd+Shift+D)") {
+                    CopiedBarButton(title: "Duplicate", icon: "plus.square.on.square", color: .purple, shortcut: "Duplicate (Cmd+Shift+D)") {
                         manager.promptDuplicate(url)
-                        selection.clear()
+                        copies.clear()
                     }
                 }
 
                 Spacer()
 
-                Text("\(selectedItems.count)")
+                Text("\(copiedItems.count)")
                     .textStyle(.small, weight: .bold)
                     .foregroundColor(.green)
                     .padding(.horizontal, 6)
@@ -886,7 +885,7 @@ struct SelectionSection: View {
                     .background(Color.green.opacity(0.1))
                     .cornerRadius(4)
 
-                Button(action: { selection.clear() }) {
+                Button(action: { copies.clear() }) {
                     Image(systemName: "xmark.circle.fill")
                         .textStyle(.small)
                         .foregroundColor(.secondary)
@@ -896,8 +895,7 @@ struct SelectionSection: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
 
-            // Selection file list
-            SelectionFileList(selection: selection)
+            CopiedFileList(copies: copies)
         }
         .background(Color.green.opacity(0.05))
     }

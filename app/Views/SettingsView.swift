@@ -285,10 +285,10 @@ struct HelpSettingsView: View {
                     shortcutRow("Cmd+Shift+D", "Duplicate file")
                     shortcutRow("Cmd+Shift+N", "Create new folder")
                     shortcutRow("Cmd+Shift+F", "Create new file")
-                    shortcutRow("Space", "Add / remove from selection")
-                    shortcutRow("Cmd+Shift+C", "Copy selection here")
-                    shortcutRow("Cmd+Shift+V", "Move selection here")
-                    shortcutRow("Cmd+A", "Select all files")
+                    shortcutRow("Space / Ctrl+C", "Copy / Copy (append) / Remove from Copied")
+                    shortcutRow("Cmd+Shift+C", "Paste copied here")
+                    shortcutRow("Cmd+Shift+V", "Move copied here")
+                    shortcutRow("Cmd+A", "Copy all files")
                     shortcutRow("Ctrl+R", "Refresh directory")
                     shortcutRow("Cmd+T", "Toggle tree / flat view")
                 }
@@ -314,8 +314,9 @@ struct HelpSettingsView: View {
                     helpText("Drag files out of the browser to copy. Drop files into browser to copy here. Drop folders onto sidebar to pin. Drag sidebar pins to reorder.")
                 }
 
-                helpSection("Selection") {
-                    helpText("Space to add files to global selection. Selection bar appears with actions: copy to, move to, trash, download (iPhone). Works across folders and iPhone.")
+                helpSection("Copy") {
+                    helpText("Space copies the file; while other files are copied it says Copy (append) and adds to them. On a copied file it shows Remove from Copied.")
+                    helpText("The copied list in the actions pane offers paste here, move here, trash and duplicate. Works across folders, iPhone and SSH. Files copied in Finder are added too.")
                 }
 
                 helpSection("iPhone") {

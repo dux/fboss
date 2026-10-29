@@ -56,8 +56,8 @@ struct TransferTests {
         #expect(FileManager.default.fileExists(atPath: remote.url.appendingPathComponent("A/B/file.txt").path))
     }
 
-    @Test("selection retains failed and unrelated items")
-    @MainActor func selectionResults() async throws {
+    @Test("copies retain failed and unrelated items")
+    @MainActor func copyResults() async throws {
         let remote = try TestWorkspace()
         let local = try TestWorkspace()
         let source = TestRemoteSource(backing: remote.url, failure: .read)
@@ -66,16 +66,16 @@ struct TransferTests {
         let good = item(source.url("good.txt"))
         let bad = item(source.url("file.txt"))
         let unrelated = item(source.url("unrelated.txt"))
-        let selection = SelectionManager()
-        _ = selection.addItems([good, bad, unrelated])
-        let coordinator = SelectionTransfer(selection: selection, transfer: FileTransfer()) {
+        let copies = CopyManager()
+        _ = copies.addItems([good, bad, unrelated])
+        let coordinator = CopyTransfer(copies: copies, transfer: FileTransfer()) {
             if $0.isFileURL { return LocalFileSource() }
             return source
         }
         let result = await coordinator.run([good, bad], to: local.url, move: false)
         #expect(result.completed == 1)
         #expect(result.failures.count == 1)
-        #expect(selection.items == [bad, unrelated])
+        #expect(copies.items == [bad, unrelated])
     }
 
     @Test("delete failures keep the selected source after a complete copy")
@@ -85,16 +85,16 @@ struct TransferTests {
         let source = TestRemoteSource(backing: remote.url, failDelete: true)
         try Data("data".utf8).write(to: remote.url.appendingPathComponent("file.txt"))
         let selected = item(source.url("file.txt"))
-        let selection = SelectionManager()
-        _ = selection.addItems([selected])
-        let coordinator = SelectionTransfer(selection: selection, transfer: FileTransfer()) {
+        let copies = CopyManager()
+        _ = copies.addItems([selected])
+        let coordinator = CopyTransfer(copies: copies, transfer: FileTransfer()) {
             if $0.isFileURL { return LocalFileSource() }
             return source
         }
         let result = await coordinator.run([selected], to: local.url, move: true)
         #expect(result.completed == 0)
         #expect(result.failures.count == 1)
-        #expect(selection.contains(selected))
+        #expect(copies.contains(selected))
         #expect(try Data(contentsOf: local.url.appendingPathComponent("file.txt")) == Data("data".utf8))
     }
 
@@ -173,8 +173,8 @@ struct TransferTests {
         #expect(!FileManager.default.fileExists(atPath: remote.url.appendingPathComponent("file.txt").path))
     }
 
-    @Test("selection counts skipped items separately and drops them from the selection")
-    @MainActor func selectionSkips() async throws {
+    @Test("copies count skipped items separately and drop them from the copied set")
+    @MainActor func copySkips() async throws {
         let remote = try TestWorkspace()
         let local = try TestWorkspace()
         let source = TestRemoteSource(backing: remote.url)
@@ -183,9 +183,9 @@ struct TransferTests {
         try Data("new".utf8).write(to: remote.url.appendingPathComponent("new.txt"))
         let same = item(source.url("same.txt"))
         let new = item(source.url("new.txt"))
-        let selection = SelectionManager()
-        _ = selection.addItems([same, new])
-        let coordinator = SelectionTransfer(selection: selection, transfer: FileTransfer()) {
+        let copies = CopyManager()
+        _ = copies.addItems([same, new])
+        let coordinator = CopyTransfer(copies: copies, transfer: FileTransfer()) {
             if $0.isFileURL { return LocalFileSource() }
             return source
         }
@@ -193,7 +193,7 @@ struct TransferTests {
         #expect(result.completed == 1)
         #expect(result.skipped == 1)
         #expect(result.failures.isEmpty)
-        #expect(selection.items.isEmpty)
+        #expect(copies.items.isEmpty)
     }
 
     @Test("copying a local folder into itself is rejected")

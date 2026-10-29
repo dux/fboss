@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class SelectionTransfer {
+final class CopyTransfer {
     struct Result {
         var completed = 0
         var skipped = 0
@@ -9,13 +9,13 @@ final class SelectionTransfer {
         var cancelled = false
     }
 
-    private let selection: SelectionManager
+    private let copies: CopyManager
     private let resolve: (URL) -> any FileSystemSource
     private let transfer: FileTransfer
 
-    init(selection: SelectionManager, transfer: FileTransfer,
+    init(copies: CopyManager, transfer: FileTransfer,
          resolve: @escaping (URL) -> any FileSystemSource) {
-        self.selection = selection
+        self.copies = copies
         self.transfer = transfer
         self.resolve = resolve
     }
@@ -28,7 +28,7 @@ final class SelectionTransfer {
                 try Task.checkCancellation()
                 guard let url = item.url else { throw TransferError.invalidEntry }
                 let outcome = try await transfer.transfer(url, from: resolve(url), to: destination, using: target, move: move)
-                selection.remove(item)
+                copies.remove(item)
                 switch outcome {
                 case .transferred: result.completed += 1
                 case .skipped: result.skipped += 1
@@ -52,7 +52,7 @@ final class SelectionTransfer {
                 let source = resolve(url)
                 guard source.capabilities(at: url).contains(.delete) else { throw TransferError.unsupported }
                 try await source.delete(url)
-                selection.remove(item)
+                copies.remove(item)
                 result.completed += 1
             } catch is CancellationError {
                 result.cancelled = true

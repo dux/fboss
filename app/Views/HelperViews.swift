@@ -26,6 +26,7 @@ struct FileListRow: View {
     let exists: Bool
     let parentPath: String
     let isSelected: Bool
+    var link: SymlinkInfo? = nil
     var showRemove: Bool = false
     var onRemove: (() -> Void)? = nil
 
@@ -49,11 +50,14 @@ struct FileListRow: View {
             }
 
             // Name
-            Text(url.lastPathComponent)
-                .textStyle(.default)
-                .foregroundColor(exists ? .primary : .secondary.opacity(0.5))
-                .strikethrough(!exists)
-                .lineLimit(1)
+            HStack(spacing: 3) {
+                Text(url.lastPathComponent)
+                    .textStyle(.default)
+                    .foregroundColor(exists ? .primary : .secondary.opacity(0.5))
+                    .strikethrough(!exists)
+                    .lineLimit(1)
+                SymlinkBadge(link: link)
+            }
 
             // Parent path
             Text(parentPath)

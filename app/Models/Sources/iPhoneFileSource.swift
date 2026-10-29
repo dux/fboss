@@ -115,7 +115,8 @@ final class iPhoneFileSource: FileSystemSource {
                 isDirectory: file.isDirectory,
                 size: file.size,
                 modDate: file.modifiedDate,
-                isHidden: file.name.hasPrefix(".")
+                isHidden: file.name.hasPrefix("."),
+                link: file.link
             )
         }
     }
@@ -420,6 +421,8 @@ final class iPhoneFileSource: FileSystemSource {
 
                 var fileInfo: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
                 var isDir = false
+                var isLink = false
+                var linkTarget: String?
                 var size: Int64 = 0
                 var modDate: Date?
 
@@ -432,6 +435,9 @@ final class iPhoneFileSource: FileSystemSource {
                         switch key {
                         case "st_ifmt":
                             isDir = (val == "S_IFDIR")
+                            isLink = (val == "S_IFLNK")
+                        case "st_linktarget":
+                            linkTarget = val
                         case "st_size":
                             size = Int64(val) ?? 0
                         case "st_mtime":
@@ -453,7 +459,9 @@ final class iPhoneFileSource: FileSystemSource {
                     path: fullPath,
                     isDirectory: isDir,
                     size: size,
-                    modifiedDate: modDate
+                    modifiedDate: modDate,
+                    link: isLink ? SymlinkInfo(target: linkTarget.map { SymlinkInfo.absoluteTarget($0, parentPath: afcPath) },
+                                               isBroken: false) : nil
                 ))
             }
 

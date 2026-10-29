@@ -108,12 +108,6 @@ struct EnumTests {
         #expect(SortMode.size.rawValue == "Size")
     }
 
-    @Test("BrowserViewMode raw values")
-    func browserViewModeRawValues() {
-        #expect(BrowserViewMode.files.rawValue == "Files")
-        #expect(BrowserViewMode.selected.rawValue == "Selected")
-    }
-
     @Test("MainPaneType equality")
     func mainPaneTypeEquality() {
         let browser1 = MainPaneType.browser
@@ -290,13 +284,13 @@ struct FileItemTests {
     }
 }
 
-// MARK: - SelectionManager Tests
+// MARK: - CopyManager Tests
 
-@Suite("SelectionManager")
-struct SelectionManagerTests {
+@Suite("CopyManager")
+struct CopyManagerTests {
     @Test("add and remove items")
     @MainActor func addRemove() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         let item = makeLocalItem("test.txt", path: "/tmp/test-sel.txt")
         sel.add(item)
@@ -309,7 +303,7 @@ struct SelectionManagerTests {
 
     @Test("clear removes all items")
     @MainActor func clearAll() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         sel.add(makeLocalItem("a", path: "/tmp/a"))
         sel.add(makeLocalItem("b", path: "/tmp/b"))
@@ -320,7 +314,7 @@ struct SelectionManagerTests {
 
     @Test("toggle adds then removes")
     @MainActor func toggle() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         let item = makeLocalItem("t", path: "/tmp/toggle-test")
         sel.toggle(item)
@@ -331,7 +325,7 @@ struct SelectionManagerTests {
 
     @Test("duplicate add does not increase count")
     @MainActor func duplicateAdd() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         let item = makeLocalItem("dup", path: "/tmp/dup-test")
         sel.add(item)
@@ -341,7 +335,7 @@ struct SelectionManagerTests {
 
     @Test("localItems filters correctly")
     @MainActor func localItemsFilter() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         sel.add(makeLocalItem("local", path: "/tmp/local"))
         sel.add(makeIPhoneItem("phone", path: "/phone/file"))
@@ -352,20 +346,20 @@ struct SelectionManagerTests {
 
     @Test("removeByPath removes matching item")
     @MainActor func removeByPath() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         sel.add(makeLocalItem("x", path: "/tmp/x"))
         sel.removeByPath("/tmp/x")
         #expect(sel.isEmpty)
     }
 
-    @Test("manager toggles listed remote files and folders in global selection")
+    @Test("manager toggles listed remote files and folders in the copied set")
     @MainActor func toggleListedRemoteItems() throws {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         defer { sel.clear() }
 
-        let manager = makeTestManager(selection: sel)
+        let manager = makeTestManager(copies: sel)
         let folderURL = try #require(URL(string: "ssh://user@example.com/var/log"))
         let fileURL = try #require(URL(string: "ssh://user@example.com/var/log/app.log"))
         manager.directories = [CachedFileInfo(
@@ -383,40 +377,96 @@ struct SelectionManagerTests {
             isHidden: false
         )]
 
-        manager.toggleFileSelection(folderURL)
-        manager.toggleFileSelection(fileURL)
+        manager.toggleCopy(folderURL)
+        manager.toggleCopy(fileURL)
 
-        #expect(manager.isInSelection(folderURL))
-        #expect(manager.isInSelection(fileURL))
+        #expect(manager.isCopied(folderURL))
+        #expect(manager.isCopied(fileURL))
         #expect(sel.remoteItems.count == 2)
 
-        manager.toggleFileSelection(fileURL)
+        manager.toggleCopy(fileURL)
 
-        #expect(manager.isInSelection(folderURL))
-        #expect(!manager.isInSelection(fileURL))
+        #expect(manager.isCopied(folderURL))
+        #expect(!manager.isCopied(fileURL))
     }
 
-    @Test("Space selection toggles the current remote folder")
+    @Test("Space copy toggles the current remote folder")
     @MainActor func toggleCurrentRemoteFolder() throws {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         defer { sel.clear() }
 
-        let manager = makeTestManager(selection: sel)
+        let manager = makeTestManager(copies: sel)
         let url = try #require(URL(string: "ssh://user@example.com/var/log"))
         manager.currentPath = url
         manager.selectedItem = url
 
-        manager.toggleGlobalSelection()
-        #expect(manager.isInSelection(url))
+        manager.toggleCopyAtCursor()
+        #expect(manager.isCopied(url))
 
-        manager.toggleGlobalSelection()
-        #expect(!manager.isInSelection(url))
+        manager.toggleCopyAtCursor()
+        #expect(!manager.isCopied(url))
+    }
+
+    @Test("Space copy adds a bracketed movie folder and a dangling symlink, and pastes the link")
+    @MainActor func toggleBracketedFolderAndDanglingLink() async throws {
+        let workspace = try TestWorkspace()
+        let name = "Fight.Club.1999.REMASTERED.1080p.BluRay.DDP5.1.x265.10bit-GalaxyRG265[TGx]"
+        let folder = workspace.url.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: folder.appendingPathComponent("Fight.Club.mkv"))
+        let links = workspace.url.appendingPathComponent("links")
+        try FileManager.default.createDirectory(at: links, withIntermediateDirectories: true)
+        let link = links.appendingPathComponent(name)
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "/Volumes/missing-volume/movies/\(name)")
+
+        let manager = makeTestManager()
+        for url in [folder, link] {
+            manager.selectedItem = url
+            manager.toggleCopyAtCursor()
+            #expect(manager.isCopied(url), "\(url.path)")
+        }
+
+        let target = workspace.url.appendingPathComponent("target")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let items = manager.copies.sortedItems.filter { $0.path == link.path }
+        let result = await CopyTransfer(copies: manager.copies, transfer: FileTransfer()) { _ in LocalFileSource() }
+            .run(items, to: target, move: false)
+        #expect(result.failures.isEmpty, "\(result.failures)")
+        let pasted = try FileManager.default.destinationOfSymbolicLink(atPath: target.appendingPathComponent(name).path)
+        #expect(pasted == "/Volumes/missing-volume/movies/\(name)")
+    }
+
+    @Test("local listing stamps symlinks, their targets, and broken links")
+    func listingStampsSymlinks() throws {
+        let workspace = try TestWorkspace()
+        let fm = FileManager.default
+        try Data("x".utf8).write(to: workspace.url.appendingPathComponent("real.txt"))
+        try fm.createDirectory(at: workspace.url.appendingPathComponent("Real Folder"), withIntermediateDirectories: false)
+        try fm.createSymbolicLink(atPath: workspace.url.appendingPathComponent("file link").path, withDestinationPath: "real.txt")
+        try fm.createSymbolicLink(atPath: workspace.url.appendingPathComponent("folder link").path, withDestinationPath: "Real Folder")
+        try fm.createSymbolicLink(atPath: workspace.url.appendingPathComponent("dangling").path, withDestinationPath: "/Volumes/missing-volume/x")
+
+        let listing = FileExplorerManager.buildListing(try LocalFileSource.enumerateRaw(at: workspace.url),
+                                                       showAll: true, sortMode: .name, ignore: nil)
+        let byName = Dictionary(uniqueKeysWithValues: (listing.directories + listing.files).map { ($0.name, $0) })
+        #expect(byName["real.txt"]?.isSymlink == false)
+        #expect(byName["Real Folder"]?.isSymlink == false)
+        let base = workspace.url.standardizedFileURL.path
+        #expect(byName["file link"]?.link == SymlinkInfo(target: base + "/real.txt", isBroken: false))
+        #expect(byName["folder link"]?.link == SymlinkInfo(target: base + "/Real Folder", isBroken: false))
+        #expect(byName["dangling"]?.link == SymlinkInfo(target: "/Volumes/missing-volume/x", isBroken: true))
+        #expect(Set(listing.directories.map(\.name)) == ["folder link", "Real Folder"])
+        #expect(byName["folder link"]?.size == 0)
+        #expect(byName["file link"]?.isDirectory == false)
+        #expect(byName["dangling"]?.isDirectory == false)
+        let folderLink = workspace.url.appendingPathComponent("folder link")
+        #expect(FileItem.fromLocal(folderLink)?.isDirectory == true)
     }
 
     @Test("removing a local path preserves a remote item with the same path")
     @MainActor func removeLocalPathPreservesRemoteItem() throws {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         defer { sel.clear() }
 
@@ -703,11 +753,11 @@ struct ShortcutItemTests {
 
 // MARK: - ContainsLocal Tests
 
-@Suite("SelectionManager ContainsLocal")
+@Suite("CopyManager ContainsLocal")
 struct ContainsLocalTests {
     @Test("containsLocal returns true for added local URL")
     @MainActor func containsLocalTrue() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         let item = makeLocalItem("test.txt", path: "/tmp/contains-local-test")
         sel.add(item)
@@ -717,14 +767,14 @@ struct ContainsLocalTests {
 
     @Test("containsLocal returns false for non-existent URL")
     @MainActor func containsLocalFalse() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         #expect(!sel.containsLocal(URL(fileURLWithPath: "/tmp/not-added")))
     }
 
     @Test("containsLocal returns false for iPhone items with same path")
     @MainActor func containsLocalNotIPhone() {
-        let sel = SelectionManager()
+        let sel = CopyManager()
         sel.clear()
         let item = makeIPhoneItem("phone.txt", path: "/tmp/phone-path")
         sel.add(item)

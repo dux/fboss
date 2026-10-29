@@ -298,8 +298,7 @@ extension FileExplorerManager {
             }
             guard ok else { return }
 
-            // Remove from selection if it was selected
-            SelectionManager.shared.removeByPath(url.path)
+            CopyManager.shared.removeByPath(url.path)
 
             if isCurrentOrAncestor {
                 // Navigate to the parent of the deleted folder and focus it
@@ -312,7 +311,7 @@ extension FileExplorerManager {
         }
     }
 
-    /// Dropped files use the same transfer path as selection actions.
+    /// Dropped files use the same transfer path as paste actions.
     func uploadItems(_ localURLs: [URL], to destination: URL) {
         transferItems(localURLs.compactMap { FileItem.fromLocal($0) }, to: destination)
     }
@@ -320,15 +319,15 @@ extension FileExplorerManager {
     /// Delete on sources without a trash (remote backends). Permanent.
     private func deletePermanently(_ url: URL, via source: FileSystemSource) {
         guard source.capabilities(at: url).contains(.delete) else { return }
-        let selectedFileItem = cachedInfo(for: url).flatMap { FileItem.from(info: $0) }
+        let deletedFileItem = cachedInfo(for: url).flatMap { FileItem.from(info: $0) }
         let isCurrentOrAncestor = currentPath.path == url.path ||
             currentPath.path.hasPrefix(url.path + "/")
 
         Task { [weak self] in
             do {
                 try await source.delete(url)
-                if let selectedFileItem, SelectionManager.shared.contains(selectedFileItem) {
-                    SelectionManager.shared.remove(selectedFileItem)
+                if let deletedFileItem, CopyManager.shared.contains(deletedFileItem) {
+                    CopyManager.shared.remove(deletedFileItem)
                 }
                 if isCurrentOrAncestor {
                     self?.navigateToFolder(url.deletingLastPathComponent())
@@ -387,9 +386,9 @@ extension FileExplorerManager {
         Task { [weak self] in
             do {
                 try await source.move(item, to: newURL)
-                // Update path in selection if it was selected
+                // Keep a copied entry pointing at the renamed path
                 if item.isFileURL {
-                    SelectionManager.shared.updateLocalPath(from: item.path, to: newURL.path)
+                    CopyManager.shared.updateLocalPath(from: item.path, to: newURL.path)
                 }
                 // Select the renamed item once the refreshed listing is in
                 self?.loadContents(selecting: newURL)

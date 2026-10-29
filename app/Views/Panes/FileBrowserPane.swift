@@ -24,7 +24,7 @@ struct FileBrowserPane: View {
 }
 
 struct KeyboardShortcutBar: View {
-    @ObservedObject private var selection = SelectionManager.shared
+    @ObservedObject private var copies = CopyManager.shared
 
     var body: some View {
         HStack(spacing: 6) {
@@ -33,9 +33,9 @@ struct KeyboardShortcutBar: View {
             shortcutPair("\u{21A9}", "rename")
             shortcutPair("\u{2318}\u{21E7}N", "folder")
             dot
-            shortcutPair("Space", "select")
-            if !selection.isEmpty {
-                shortcutPair("\u{2318}\u{21E7}C", "copy")
+            shortcutPair("Space", copies.isEmpty ? "copy" : "copy (append)")
+            if !copies.isEmpty {
+                shortcutPair("\u{2318}\u{21E7}C", "paste")
                 shortcutPair("\u{2318}\u{21E7}V", "move")
             }
             shortcutPair("\u{2318}\u{232B}", "trash")
@@ -245,7 +245,8 @@ struct SearchResultRow: View {
             isDirectory: item.isDirectory,
             exists: true,
             parentPath: parentPath,
-            isSelected: manager.selectedItem == item.url
+            isSelected: manager.selectedItem == item.url,
+            link: item.link
         )
         .onTapGesture {
             let now = Date()
@@ -263,7 +264,7 @@ struct SearchResultRow: View {
     }
 }
 
-struct SelectionBarButton: View {
+struct CopiedBarButton: View {
     let title: String
     let icon: String
     let color: Color

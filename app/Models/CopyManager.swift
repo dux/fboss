@@ -1,9 +1,9 @@
 import Foundation
 
-/// Global selection manager that handles files from any source
+/// Global stack of copied files from any source
 @MainActor
-final class SelectionManager: ObservableObject {
-    static let shared = SelectionManager()
+final class CopyManager: ObservableObject {
+    static let shared = CopyManager()
 
     @Published private(set) var items: Set<FileItem> = []
     @Published private(set) var version: Int = 0
@@ -33,13 +33,7 @@ final class SelectionManager: ObservableObject {
         let inserted = items.insert(item).inserted
         if inserted {
             version += 1
-            ToastManager.shared.show("Added to selection (\(count) item\(count == 1 ? "" : "s"))")
-        }
-    }
-
-    func addLocal(_ url: URL) {
-        if let item = FileItem.fromLocal(url) {
-            add(item)
+            ToastManager.shared.show("Copied (\(count) item\(count == 1 ? "" : "s"))")
         }
     }
 
@@ -57,11 +51,6 @@ final class SelectionManager: ObservableObject {
             version += 1
         }
         return added
-    }
-
-    func addIPhone(_ file: iPhoneFile, deviceId: String, appId: String, appName: String) {
-        let item = FileItem.fromIPhone(file, deviceId: deviceId, appId: appId, appName: appName)
-        add(item)
     }
 
     /// Batch add without per-item toasts. Returns count of newly added items.
@@ -130,7 +119,7 @@ final class SelectionManager: ObservableObject {
     func clear() {
         items.removeAll()
         version += 1
-        ToastManager.shared.show("Selection cleared")
+        ToastManager.shared.show("Copied items cleared")
     }
 
 }

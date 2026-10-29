@@ -40,7 +40,7 @@ The **generic backend contract** every browsable source implements: path algebra
 - **SSHFileSource** (`Models/Sources/SSHFileSource.swift`) -- SFTP browsing over libssh2 (`SSHConnection.swift` owns the socket/session/auth, known_hosts accept-new). `ssh://user@host/path` URLs; write/rename/delete but no recursive search or watch. `MountsManager` keeps SSH/SMB favorites and connects them.
 
 ### FileExplorerManager (`Models/FileExplorerManager.swift`)
-The **central @MainActor ObservableObject**. Owns all navigation, file listing, search, and selection state for ALL backends -- the same pane, keyboard nav, and selection work on local, iPhone, and SSH sources.
+The **central @MainActor ObservableObject**. Owns all navigation, file listing, search, cursor and copy state for ALL backends -- the same pane, keyboard nav, and copied files work on local, iPhone, and SSH sources.
 
 **Key published state:**
 - `currentPath: URL` -- current directory
@@ -49,8 +49,7 @@ The **central @MainActor ObservableObject**. Owns all navigation, file listing, 
 - `selectedItem: URL?`, `selectedIndex: Int` -- single item cursor
 - `previewStack`, `previewForwardStack: [PreviewTarget]` -- files reached by clicking links inside a preview; `previewURL` is what the right pane actually renders
 - `sortMode: SortMode` (.type, .name, .modified, .size) -- triggers `loadContents()` on change; in Size mode local folder sizes are measured asynchronously via `FolderSizeCalculator`
-- `currentPane: MainPaneType` -- `.browser`, `.selection`, `.colorTag(TagColor)`
-- `browserViewMode: BrowserViewMode` -- `.files`, `.selected`
+- `currentPane: MainPaneType` -- `.browser`, `.colorTag(TagColor)`
 - `showHidden`, `hiddenCount`, `hasImages`
 - `isSearching`, `searchQuery`, `searchResults`, `isSearchRunning`, `listCursorIndex`
 - `searchScannedCount`, `searchExtensionCounts`, `selectedSearchExtension` -- recursive search index/filter state
@@ -66,13 +65,13 @@ The **central @MainActor ObservableObject**. Owns all navigation, file listing, 
 - `startSearch()` -- begins a background recursive item scan, skipping heavy folders such as `.git`, `node_modules`, `tmp`, build/cache directories and listing matching folders and apps before files
 - `performSearch(_ query)` -- filters the in-memory search index by name/path and selected extension, showing up to 1,000 results
 - `selectNext()`, `selectPrevious()`, `jumpToLetter()`, `selectFirst()`, `selectLast()` -- keyboard nav
-- `addFileToSelection()`, `toggleFileSelection()`, `selectAllFiles()` -- delegates to `SelectionManager.shared`
+- `toggleCopy()`, `toggleCopyAtCursor()`, `copyRange()`, `copyAllFiles()`, `isCopied()`, `copyToggleLabel()` -- delegate to `CopyManager` (`copies`)
 
 **Private state:**
 - `history: [URL]`, `historyIndex: Int` -- back/forward navigation
 - `selectionMemory: [String: URL]` -- remembers selected item per directory path
 
-The class body itself keeps only stored state, `init`/`deinit`, navigation/history, sidebar and right-pane cursors, directory monitoring, keyboard nav and the `SelectionManager` bridge.
+The class body itself keeps only stored state, `init`/`deinit`, navigation/history, sidebar and right-pane cursors, directory monitoring, keyboard nav and the `CopyManager` bridge.
 Everything else lives in extension files next to it (Swift allows methods, computed properties and *static* stored properties in an extension -- only instance stored properties must stay in the class).
 
 ### FileExplorerManagerLoading (extension, `Models/FileExplorerManagerLoading.swift`)
@@ -90,25 +89,37 @@ File operation methods: `createNewFolder()`, `createNewFile()`, `duplicateFile()
 ### FileExplorerManagerSearch (extension, `Models/FileExplorerManagerSearch.swift`)
 Search methods: `startSearch()`, `startSearch(withQuery:)`, `cancelSearch()`, `performSearch()`, `toggleSearchExtension()`, `rescanSearchIndexIfActive()`. Entry points are gated on the source's `.recursiveSearch` capability (remote backends get a toast instead of an empty pane). List cursor navigation: `listSelectNext()`, `listSelectPrevious()`, `listActivateItem()`.
 
-### FileItem and SelectionManager (`Models/FileItem.swift`, `Models/SelectionManager.swift`)
+### FileItem and CopyManager (`Models/FileItem.swift`, `Models/CopyManager.swift`)
 * `FileItem` is a unified file representation with `id`, `name`, `path`, `isDirectory`, `size`, `modifiedDate`, and a local, iPhone, or generic remote source.
-* `SelectionManager` is a **singleton** managing a `Set<FileItem>`.
+* `CopyManager` is a **singleton** managing the copied files as a `Set<FileItem>`; copying always adds to the set.
   It tracks `version: Int` for change detection.
-  It owns add/remove/toggle/clear and selection identity only.
+  It owns add/remove/toggle/clear and copied-item identity only.
   Its initializer is usable by isolated tests.
 
 ### CachedFileInfo (in FileExplorerManager.swift)
-Lightweight struct: `url`, `isDirectory`, `size`, `modDate`, `isHidden`, `displayName`. Display model for directory listings.
+Lightweight struct: `url`, `isDirectory`, `size`, `modDate`, `isHidden`, `displayName`, `isIgnored`, `link`. Display model for directory listings.
+
+### Symlinks
+`SourceEntry.link` / `CachedFileInfo.link` hold a `SymlinkInfo` (target path, broken flag) for symbolic links; `isSymlink` and `isBrokenLink` read it.
+Each backend fills it from what its listing already reads, off the main actor for async loads.
+Local listings request `.isSymbolicLinkKey` with the other prefetched keys, and only links pay one `readlink` plus one following stat for the target and broken flag.
+SFTP takes the link type from `readdir` attributes and marks a link broken when the target stat it already runs finds nothing; the target path is not fetched.
+AFC takes `st_ifmt` and `st_linktarget` from the per-entry file info it already reads; broken links are not detected.
+`FileItem.link` and `TaggedFile.link` carry the same info for the copied list and color label rows.
+A local link whose target is a folder lists, sorts and browses as a folder through the link path; the same following stat sets `isDirectory`, and broken links stay files.
+`SymlinkBadge` (`Views/SharedComponents.swift`) is the one badge view, placed right after the name in tree rows, grid tiles, search and color label rows, the folder preview dialog and the copied list; it is red for broken links.
+Its tooltip reads "Symlink from <target>", with " (missing)" for broken links and just "Symlink" when the target is unknown.
+Rows without an AppKit overlay show it through `.help`; tree rows and grid tiles get the badge frame through `SymlinkBadgeFrameKey` and `FileRowMouseArea` registers it as an AppKit tooltip rect, because the overlay hides SwiftUI `.help`.
 
 ### Transfers
 
-`FileExplorerManagerTransfers` is the common entry point for selection buttons, keyboard shortcuts, context menus, and dropped files.
-`SelectionTransfer` receives its selection store and source resolver through its initializer, and removes only successfully completed items from selection.
+`FileExplorerManagerTransfers` is the common entry point for the copied-files buttons, keyboard shortcuts, context menus, and dropped files.
+`CopyTransfer` receives its copy store and source resolver through its initializer, and removes only successfully completed items from the copied set.
 `FileTransfer` walks remote folders through `stat` and `list`, including nested and empty directories, and downloads each file through the backend's `downloadFile` primitive.
 Local downloads stage into a unique directory on the destination volume, verify file sizes, and move into a free numbered name only after the complete tree succeeds.
 A copy skips a top-level file when the destination already holds a regular file with the same name and size; folders and moves keep the numbered-copy policy.
 Remote uploads stage into a unique remote folder before moving into their final name.
-Moves never apply copy exclusions and delete the source only after the destination completes; read, write, cancellation, or deletion failures retain the selection.
+Moves never apply copy exclusions and delete the source only after the destination completes; read, write, cancellation, or deletion failures keep the item copied.
 `StreamTransfer` checks read errors and retries short writes for AFC transfers.
 
 ### Persistence
@@ -134,7 +145,7 @@ All `@MainActor`:
 - **NpmPackageManager** -- detects `package.json`, provides npm link
 - **MovieManager** -- OMDB movie metadata + poster
 - **VolumesManager** -- monitors mounted volumes via NSWorkspace notifications
-- **iPhoneManager** -- iOS device detection/scanning; context-explicit AFC transfer ops used by SelectionManager and iPhoneFileSource (`iPhoneManagerFileOps.swift`). Browsing itself goes through iPhoneFileSource + the main browser pane
+- **iPhoneManager** -- iOS device detection/scanning; context-explicit AFC transfer ops used by CopyManager and iPhoneFileSource (`iPhoneManagerFileOps.swift`). Browsing itself goes through iPhoneFileSource + the main browser pane
 - **AppSearcher** -- finds apps that can open a file type
 - **AppUninstaller** -- finds leftover app data for cleanup
 - **FolderSizeCalculator** -- a stateless, cancellable recursive measurement shared by size sorting, file details, and DMG previews; it reports failures instead of caching partial totals
@@ -197,7 +208,7 @@ Primary file listing. Two modes via `settings.flatFolders`:
 - **Tree**: ancestor rows (indented path) + children at `ancestors.count` depth. 20pt indent per level.
 - **Flat**: `FlatBreadcrumbRow` + children at depth 1.
 
-**FileTreeRow:** icon + filename + color dots + date + size. Single click on dir: select then navigate (150ms). Click file: toggle selection. Double click: open. Drag: `NSItemProvider`. Right-click: custom context menu. Background: blue=selected, green=in selection.
+**FileTreeRow:** icon + filename + color dots + date + size. Single click: move the cursor. Cmd+click: toggle copy; Shift+click: copy a range. Double click: open. Drag: `NSItemProvider` (a copied row drags every copied local file). Right-click: custom context menu. Background: blue=cursor, green=copied.
 Hidden rows render at half opacity; gitignored rows mute only the icon and name (secondary text colour) so a selected ignored row keeps its full highlight.
 In tree mode `allItems` lists folders, then files, then every hidden or gitignored entry (`CachedFileInfo.isMuted`) in the same order, and `childRows` draws a thin rule at `mutedStartIndex`; "in line" mode keeps the plain order.
 Keyboard navigation and selection memory index into `allItems`, so the order lives in the manager rather than the view, and the manager re-syncs `selectedIndex` from `selectedItem` when `flatFolders` flips.
@@ -272,10 +283,10 @@ Following works for any previewable type, since the stack sits above `PreviewPan
 ### State management
 - Singletons with `@MainActor` for all shared managers
 - `FileExplorerManager` created as `@StateObject` in ContentView, passed down via `@ObservedObject`
-- Change tracking via `.version` counters (ColorTagManager, SelectionManager)
+- Change tracking via `.version` counters (ColorTagManager, CopyManager)
 
 ### Keyboard shortcuts (KeyCaptureView in KeyboardHandler.swift)
-`NSViewRepresentable` capturing all key events. Priority: context menu -> rename -> tab cycling -> sidebar -> right pane -> search -> normal mode. Normal mode: arrows (navigate/select), Space (toggle selection), Enter (rename), Backspace (go back), Cmd+Backspace (trash), letter (type-to-search; jump-to-letter on sources without search), Cmd+T (toggle tree/flat), Cmd+F (search), Ctrl+R (refresh).
+`NSViewRepresentable` capturing all key events. Priority: context menu -> rename -> tab cycling -> sidebar -> right pane -> search -> normal mode. Normal mode: arrows (navigate/select), Space / Ctrl+C (Copy, Copy (append), or Remove from Copied), Cmd+A (copy all files), Cmd+Shift+C (paste copied here), Cmd+Shift+V (move copied here), Enter (rename), Backspace (go back), Cmd+Backspace (trash), letter (type-to-search; jump-to-letter on sources without search), Cmd+T (toggle tree/flat), Cmd+F (search), Ctrl+R (refresh).
 
 ### Context menu
 Custom implementation via `ContextMenuManager` + `CustomContextMenuOverlay`. Not native macOS. Supports keyboard navigation.
@@ -302,8 +313,8 @@ app/
     FileExplorerManagerFileOps.swift  -- File operations extension
     FileExplorerManagerSearch.swift   -- Search & list cursor extension
     FileItem.swift                   -- File identity and destination naming helpers
-    SelectionManager.swift           -- Selection storage
-    SelectionTransfer.swift          -- Per-item transfer results and selection updates
+    CopyManager.swift                -- Copied files storage
+    CopyTransfer.swift               -- Per-item transfer results and copied-set updates
     FileTransfer.swift               -- Recursive transfers, staging, collision policy
     FileExplorerManagerTransfers.swift -- Shared UI transfer entry points
     StreamTransfer.swift             -- Checked stream reads and partial writes
@@ -320,7 +331,7 @@ app/
     MountsManager.swift              -- SSH/SMB favorites and connection
     MovieManager.swift               -- OMDB movie info
     OperationManager.swift           -- Cancellable background operations
-    ClipboardMonitor.swift           -- Clipboard link watcher (webloc drops)
+    ClipboardMonitor.swift           -- Adds files copied in Finder to the copied set
     ArchiveDragSession.swift         -- AppKit drag source for multi-file drags
     VolumesManager.swift             -- Mounted volumes
     iPhoneManager.swift              -- iOS device detection/scanning

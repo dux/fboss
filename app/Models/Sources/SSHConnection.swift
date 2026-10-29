@@ -42,6 +42,8 @@ final class SSHConnection: @unchecked Sendable {
         let isSymlink: Bool
         let size: Int64
         let modDate: Date?
+        /// Symlink whose target stat reported missing (set by `listSync`)
+        var isBrokenLink = false
     }
 
     // libssh2 constants are mostly #define'd expressions the importer drops;
@@ -436,11 +438,18 @@ final class SSHConnection: @unchecked Sendable {
             entries.append(Self.entry(name: name, attrs: attrs))
         }
 
-        // Resolve symlink targets so linked directories browse as directories
+        // Resolve symlink targets so linked directories browse as directories.
+        // The stat already happens here, so a missing target marks the link broken.
         return entries.map { entry in
             guard entry.isSymlink else { return entry }
             let target = path.hasSuffix("/") ? path + entry.name : path + "/" + entry.name
-            guard let resolved = try? statSync(target) else { return entry }
+            let resolved: Entry?
+            do { resolved = try statSync(target) } catch { return entry }
+            guard let resolved else {
+                var broken = entry
+                broken.isBrokenLink = true
+                return broken
+            }
             return Entry(name: entry.name, isDirectory: resolved.isDirectory, isSymlink: true,
                          size: resolved.size, modDate: resolved.modDate)
         }

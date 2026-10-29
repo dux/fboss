@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a
 - Create new folder (with custom name dialog) / new text file
 - Add to zip (using ditto)
 - Copy file path to clipboard (with ~ shorthand)
-- Multi-file selection with paste/move/trash batch operations
+- Copy files from any folder, iPhone or SSH source into one copied list (copying always appends), then paste/move/trash them in a batch
 - Drag-and-drop copy between folders
 - Extract archives (zip, tar, tgz, gz, bz2, xz, rar, 7z) into unique folder
 - Context menus on file rows (open, duplicate, zip, trash, enable app) — also accessible via keyboard (`.` or Ctrl+M)
@@ -109,7 +109,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a
 - Download files from iPhone to Mac
 - Delete files on iPhone
 - Create folders on iPhone
-- Multi-file selection with batch download/delete
+- Copy multiple files and paste (download) or delete them in a batch
 
 ### Search
 - Fast recursive search using `fd`
@@ -122,12 +122,12 @@ curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a
 - Cmd+Down/Up: enter folder / go to parent (Finder-like)
 - Tab: cycle focus between sidebar, file list, and right pane
 - Enter: rename selected file
-- Space: toggle file selection
+- Space / Ctrl+C: Copy, Copy (append) when other files are copied, or Remove from Copied
 - Cmd+Delete: move to trash
-- Cmd+A / Ctrl+A: select all files
+- Cmd+A / Ctrl+A: copy all files
+- Cmd+Shift+C / Cmd+Shift+V: paste / move copied files here
 - Cmd+F: search
 - Cmd+O: open with preferred app
-- Ctrl+C: toggle file in selection
 - Cmd+T: toggle tree / flat view
 - Ctrl+R: refresh folder contents
 - `.` or Ctrl+M: open context menu for selected file (navigate with Up/Down, Enter to activate, Escape to dismiss)
@@ -196,7 +196,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a
 | Open-with per file type | Yes (right-click) | One-click from actions pane |
 | Default folder handler | N/A (is Finder) | Yes, via duti |
 | Fast search | Spotlight (indexed) | fd-based recursive search |
-| Multi-file batch operations | Yes | Yes with visual selection bar |
+| Multi-file batch operations | Yes | Yes with a visual copied list |
 | Pinned folders | Sidebar favorites | Yes with custom emoji + drag reorder |
 
 ## Requirements

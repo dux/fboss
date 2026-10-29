@@ -31,10 +31,6 @@ final class AppSettings: ObservableObject {
         didSet { saveAsync() }
     }
 
-    @Published var browserViewMode: String {
-        didSet { saveAsync() }
-    }
-
     // Window position and size
     @Published var windowX: CGFloat? {
         didSet { saveAsync() }
@@ -118,7 +114,6 @@ final class AppSettings: ObservableObject {
         showPreviewPane = true
         leftPaneWidth = 326
         rightPaneWidth = 532
-        browserViewMode = "files"
         windowX = nil
         windowY = nil
         windowWidth = nil
@@ -195,12 +190,6 @@ final class AppSettings: ObservableObject {
         if let rightWidth = json["rightPaneWidth"] as? CGFloat {
             rightPaneWidth = rightWidth
         }
-        if let viewMode = json["browserViewMode"] as? String {
-            // Don't restore Search tab — always start on Files
-            if viewMode.lowercased() != "search" {
-                browserViewMode = viewMode
-            }
-        }
         if let x = json["windowX"] as? CGFloat {
             windowX = x
         }
@@ -247,7 +236,6 @@ final class AppSettings: ObservableObject {
             showPreview: showPreviewPane,
             leftWidth: leftPaneWidth,
             rightWidth: rightPaneWidth,
-            viewMode: browserViewMode,
             winX: windowX,
             winY: windowY,
             winW: windowWidth,
@@ -277,7 +265,6 @@ final class AppSettings: ObservableObject {
         let showPreview: Bool
         let leftWidth: CGFloat
         let rightWidth: CGFloat
-        let viewMode: String
         let winX: CGFloat?
         let winY: CGFloat?
         let winW: CGFloat?
@@ -297,7 +284,7 @@ final class AppSettings: ObservableObject {
 
         enum CodingKeys: String, CodingKey {
             case fontSize = "previewFontSize", split = "previewPaneSplit", showPreview = "showPreviewPane"
-            case leftWidth = "leftPaneWidth", rightWidth = "rightPaneWidth", viewMode = "browserViewMode"
+            case leftWidth = "leftPaneWidth", rightWidth = "rightPaneWidth"
             case winX = "windowX", winY = "windowY", winW = "windowWidth", winH = "windowHeight"
             case apps = "preferredApps", folderHandler = "defaultFolderHandler", omdbKey = "omdbAPIKey"
             case recentApps = "recentlyUsedApps"

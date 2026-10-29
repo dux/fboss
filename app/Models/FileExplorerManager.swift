@@ -7,11 +7,6 @@ enum MainPaneType: Equatable {
     case colorTag(TagColor)
 }
 
-enum BrowserViewMode: String, CaseIterable {
-    case files = "Files"
-    case selected = "Selected"
-}
-
 enum SortMode: String, CaseIterable {
     case type = "Type"
     case name = "Name"
@@ -34,8 +29,10 @@ struct CachedFileInfo: Identifiable, Equatable {
     let displayName: String?
     /// Matched by a `.gitignore` that applies to its folder
     let isIgnored: Bool
+    let link: SymlinkInfo?
 
-    init(url: URL, isDirectory: Bool, size: Int64, modDate: Date?, isHidden: Bool, displayName: String? = nil, isIgnored: Bool = false) {
+    init(url: URL, isDirectory: Bool, size: Int64, modDate: Date?, isHidden: Bool, displayName: String? = nil,
+         isIgnored: Bool = false, link: SymlinkInfo? = nil) {
         self.url = url
         self.isDirectory = isDirectory
         self.size = size
@@ -43,12 +40,15 @@ struct CachedFileInfo: Identifiable, Equatable {
         self.isHidden = isHidden
         self.displayName = displayName
         self.isIgnored = isIgnored
+        self.link = link
     }
 
     var id: String { url.absoluteString }
     var name: String { displayName ?? url.lastPathComponent }
     /// Hidden or gitignored: drawn dimmed and listed after everything else
     var isMuted: Bool { isHidden || isIgnored }
+    var isSymlink: Bool { link != nil }
+    var isBrokenLink: Bool { link?.isBroken ?? false }
 }
 
 @MainActor
@@ -107,11 +107,6 @@ class FileExplorerManager: ObservableObject {
 
     // Remember selected item per folder
     private var selectionMemory: [String: URL] = [:]
-    @Published var browserViewMode: BrowserViewMode = .files {
-        didSet {
-            settings.browserViewMode = browserViewMode.rawValue.lowercased()
-        }
-    }
     private var suppressSortDidSet = false
     @Published var sortMode: SortMode = .type {
         didSet {
@@ -121,8 +116,7 @@ class FileExplorerManager: ObservableObject {
         }
     }
 
-    // Use unified SelectionManager
-    let selection: SelectionManager
+    let copies: CopyManager
     let settings: AppSettings
     var transferTask: Task<Void, Never>?
     var directorySizeTask: Task<Void, Never>?
@@ -196,9 +190,9 @@ class FileExplorerManager: ObservableObject {
         return URL(fileURLWithPath: path)
     }
 
-    init(settings: AppSettings = .shared, selection: SelectionManager = .shared) {
+    init(settings: AppSettings = .shared, copies: CopyManager = .shared) {
         self.settings = settings
-        self.selection = selection
+        self.copies = copies
         // Use initial path from command line argument if provided
         if let initialPath = FileExplorerApp.initialPath {
             self.currentPath = initialPath
@@ -206,11 +200,6 @@ class FileExplorerManager: ObservableObject {
             self.currentPath = lastFolder
         } else {
             self.currentPath = fileManager.homeDirectoryForCurrentUser
-        }
-        // Restore browser view mode from settings
-        let savedMode = settings.browserViewMode.lowercased()
-        if let mode = BrowserViewMode.allCases.first(where: { $0.rawValue.lowercased() == savedMode }) {
-            self.browserViewMode = mode
         }
         loadContents()
         history.append(currentPath)
@@ -673,77 +662,53 @@ class FileExplorerManager: ObservableObject {
         return FileItem.fromLocal(url)
     }
 
-    // Add a listed file or folder URL to the global selection
-    func addFileToSelection(_ url: URL) {
+    func toggleCopy(_ url: URL) {
         if let item = fileItem(for: url) {
-            selection.add(item)
+            copies.toggle(item)
         }
     }
 
-    // Toggle a file in global selection
-    func toggleFileSelection(_ url: URL) {
-        if let item = fileItem(for: url) {
-            selection.toggle(item)
-        }
-    }
-
-    // Shift+click: add the contiguous range between the cursor and the clicked row
-    func selectRange(to index: Int) {
+    // Shift+click: copy the contiguous range between the cursor and the clicked row
+    func copyRange(to index: Int) {
         guard let target = allItems[safe: index] else { return }
         let anchor = (selectedIndex >= 0 && selectedIndex < allItems.count) ? selectedIndex : index
         let items = (min(anchor, index)...max(anchor, index))
             .compactMap { allItems[safe: $0] }
             .compactMap { FileItem.from(info: $0) }
-        let added = selection.addItems(items)
+        let added = copies.addItems(items)
         if added > 0 {
-            ToastManager.shared.show("Added to selection (\(selection.count) item\(selection.count == 1 ? "" : "s"))")
+            ToastManager.shared.show("Copied (\(copies.count) item\(copies.count == 1 ? "" : "s"))")
         }
         selectItem(at: index, url: target.url)
     }
 
-    // Select all files in current folder
-    func selectAllFiles() {
-        _ = selection.addItems(files.compactMap { FileItem.from(info: $0) })
+    func copyAllFiles() {
+        _ = copies.addItems(files.compactMap { FileItem.from(info: $0) })
     }
 
-    // Add current selection to global selection
-    func addToGlobalSelection() {
-        if let item = selectedItem {
-            addFileToSelection(item)
-        }
-    }
-
-    // Remove from global selection
-    func removeFromGlobalSelection(_ url: URL) {
-        if let item = fileItem(for: url) {
-            selection.remove(item)
-        }
-    }
-
-    // Toggle current selection in global selection
-    func toggleGlobalSelection() {
+    func toggleCopyAtCursor() {
         if let item = selectedItem, let fileItem = fileItem(for: item) {
-            selection.toggle(fileItem)
+            copies.toggle(fileItem)
         }
     }
 
-    // Clear global selection
-    func clearGlobalSelection() {
-        selection.clear()
-    }
-
-    // Check if URL is in selection
-    func isInSelection(_ url: URL) -> Bool {
+    func isCopied(_ url: URL) -> Bool {
         switch url.scheme {
         case nil, "file":
-            return selection.containsLocal(url)
+            return copies.containsLocal(url)
         case "iphone":
             guard let udid = url.host,
                   let (bundleId, afcPath) = iPhoneFileSource.afcContext(for: url) else { return false }
-            return selection.containsIPhone(path: afcPath, deviceId: udid, appId: bundleId)
+            return copies.containsIPhone(path: afcPath, deviceId: udid, appId: bundleId)
         default:
-            return selection.containsRemote(url)
+            return copies.containsRemote(url)
         }
+    }
+
+    /// Label and icon for the copy toggle on `url`.
+    func copyToggleLabel(for url: URL) -> (label: String, icon: String) {
+        if isCopied(url) { return ("Remove from Copied", "minus.circle") }
+        return (copies.isEmpty ? "Copy" : "Copy (append)", "doc.on.doc")
     }
 
 }
