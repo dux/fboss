@@ -9,8 +9,7 @@ struct MainPane: View {
 
     private var appSelectorFileType: String {
         guard let url = manager.showAppSelectorForURL else { return "__empty__" }
-        let ext = url.pathExtension.lowercased()
-        return ext.isEmpty ? "__empty__" : ext
+        return AppSettings.fileTypeKey(for: url, isDirectory: false)
     }
 
     var body: some View {

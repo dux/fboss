@@ -3,10 +3,19 @@ import AppKit
 import UniformTypeIdentifiers
 
 struct AppSelectorSheet: View {
+    /// What choosing an app does: open the file with it, or only make it fBoss's default for the type.
+    enum Purpose {
+        case open
+        case chooseDefault
+    }
+
     let targetURL: URL
     let fileType: String
     @ObservedObject var settings: AppSettings
     @Binding var isPresented: Bool
+    var purpose: Purpose = .open
+    /// Runs after a choice is applied.
+    var onChosen: (() -> Void)? = nil
 
     @State private var searchText = ""
     @State private var filteredApps: [AppInfo] = []
@@ -26,7 +35,7 @@ struct AppSelectorSheet: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Open with...")
+                Text(purpose == .open ? "Open with..." : "Default app for \(fileTypeLabel)")
                     .textStyle(.default, weight: .semibold)
                 Spacer()
                 Button(action: { isPresented = false }) {
@@ -57,7 +66,7 @@ struct AppSelectorSheet: View {
                         let apps = displayApps
                         if !apps.isEmpty {
                             let idx = selectedIndex >= 0 && selectedIndex < apps.count ? selectedIndex : 0
-                            openWithApp(apps[idx])
+                            choose(apps[idx])
                         }
                     }
                 )
@@ -120,7 +129,7 @@ struct AppSelectorSheet: View {
                                     Divider().padding(.vertical, 4)
                                 }
                                 AppRow(app: app, isSelected: isListFocused && selectedIndex == idx) {
-                                    openWithApp(app)
+                                    choose(app)
                                 }
                                 .id(app.url.path)
                             }
@@ -160,7 +169,7 @@ struct AppSelectorSheet: View {
             onActivate: {
                 let apps = displayApps
                 guard selectedIndex >= 0 && selectedIndex < apps.count else { return }
-                openWithApp(apps[selectedIndex])
+                choose(apps[selectedIndex])
             },
             onClose: {
                 isPresented = false
@@ -199,14 +208,28 @@ struct AppSelectorSheet: View {
         return recent + rest
     }
 
-    private func openWithApp(_ app: AppInfo) {
-        settings.addPreferredApp(for: fileType, appPath: app.url.path)
-        AppSettings.shared.addRecentlyUsedApp(appPath: app.url.path)
-        openInApp(targetURL, withApplicationAt: app.url)
+    private var fileTypeLabel: String {
+        switch fileType {
+        case "__folder__": return "folders"
+        case "__empty__": return "files without extension"
+        default: return ".\(fileType) files"
+        }
+    }
+
+    private func choose(_ app: AppInfo) {
+        switch purpose {
+        case .open:
+            settings.addPreferredApp(for: fileType, appPath: app.url.path)
+            AppSettings.shared.addRecentlyUsedApp(appPath: app.url.path)
+            openInApp(targetURL, withApplicationAt: app.url)
+        case .chooseDefault:
+            settings.setDefaultPreferredApp(for: fileType, appPath: app.url.path)
+        }
         if setAsSystemDefault && hasRealExtension {
             setSystemDefault(app: app.url, forExtension: fileType)
         }
         isPresented = false
+        onChosen?()
     }
 
     /// Make `app` the system-wide handler for files with this extension

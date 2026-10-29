@@ -299,6 +299,20 @@ Following works for any previewable type, since the stack sits above `PreviewPan
 ### Context menu
 Custom implementation via `ContextMenuManager` + `CustomContextMenuOverlay`. Not native macOS. Supports keyboard navigation.
 
+### Show Info
+"Show Info" in the context menu (and Cmd+I for the cursor item) opens `FileInfoView` (`Views/FileInfoView.swift`) for local items, including the current folder.
+`FileInfoLoader` (`Views/FileInfoLoader.swift`) gathers a Sendable `FileInfoSnapshot` of titled sections off the main actor, and the view only renders it.
+The item is read with `lstat`, so a symlink describes the link itself.
+`SymlinkChain` follows a link hop by hop (16 hops at most), lists each hop, and reports an existing, missing or looping end.
+macOS keeps no reverse index of symlinks, so "Linked from" only checks the item's own folder for links that point at it.
+`HardLinkFinder` lists the other paths of a file with more than one hard link; `fsgetpath` returns one path and APFS link ids cannot be enumerated, so it walks the volume with `getattrlistbulk`, nearest folders first, staying on the file's volume.
+The walk scans about 80k entries per second, so it stops after 10 seconds or 50 results, says so in a row, and is cancelled when the sheet closes.
+Sections cover general facts (kind, logical and allocated size, path, volume and filesystem), all stat dates, links, owner and mode, BSD file flags, extended attributes and inode/device.
+Quarantine, download source (`kMDItemWhereFroms`), Finder tags and provenance attributes are decoded by the pure `FileInfoDecoding` helpers.
+Apps also get bundle id, version, `codesign` signature and team id, a `spctl` Gatekeeper assessment and quarantine state, each tool run with a 5 second timeout; other files list their default app.
+Folder totals come from `FolderSizeCalculator` after the rest of the sheet is shown.
+The sheet is 560 pt wide and 85% of the visible height of the app window's screen, never under 640 pt.
+
 ### Text styles
 `.textStyle(.default|.buttons|.small|.title)` modifier. Font sizes configurable in AppSettings.
 
@@ -361,7 +375,10 @@ app/
     FolderPreviewDialog.swift        -- Floating folder-contents dialog on hover
     FolderPreviewMouseArea.swift     -- AppKit hover/click layer for the preview dialog
     CustomContextMenu.swift          -- Right-click context menu system
-    HelperViews.swift                -- FileDetailsView, EmptyFolderView, rename field
+    HelperViews.swift                -- FileListRow, EmptyFolderView, rename field
+    FileInfoView.swift               -- Show Info sheet
+    FileInfoLoader.swift             -- Show Info snapshot, stat/xattr decoding, symlink chains
+    HardLinkFinder.swift             -- Bounded getattrlistbulk search for other hard-link paths
     SharedComponents.swift           -- Drop helpers, text reader, webloc writer
     TextStyles.swift                 -- .textStyle() modifier system
     ToastView.swift                  -- Toast and cancellable operation indicator

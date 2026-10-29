@@ -365,12 +365,19 @@ class KeyCaptureView: NSView {
                 copies.clear()
                 return true
             }
+        case 34: // I key - Cmd+I: Show Info for the cursor item
+            if event.modifierFlags.contains(.command), let item = manager.selectedItem, item.isFileURL {
+                let isDirectory = manager.cachedInfo(for: item)?.isDirectory
+                    ?? (SourceRegistry.shared.source(for: item).existsSync(item) == .directory)
+                ContextMenuManager.shared.showInfo(url: item, isDirectory: isDirectory)
+                return true
+            }
         default:
             break
         }
 
         // Type-to-search lives after the switch so letters whose keyCode matched
-        // a shortcut case above (a/c/d/m/r/v) still reach it when pressed bare.
+        // a shortcut case above (a/c/d/i/m/r/v) still reach it when pressed bare.
         if let chars = event.characters, chars.count == 1,
            let c = chars.first, c.isLetter,
            !event.modifierFlags.contains(.command),

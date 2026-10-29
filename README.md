@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a
 - Copy files from any folder, iPhone or SSH source into one copied list (copying always appends), then paste/move/trash them in a batch
 - Drag-and-drop copy between folders
 - Extract archives (zip, tar, tgz, gz, bz2, xz, rar, 7z) into unique folder
-- Context menus on file rows (open, duplicate, zip, trash, enable app) — also accessible via keyboard (`.` or Ctrl+M)
+- Context menus on file rows (show info, open, duplicate, zip, trash, enable app) — also accessible via keyboard (`.` or Ctrl+M)
 
 ### Preview pane
 - **Images**: jpg, jpeg, png, gif, bmp, webp, heic, heif, tiff, tif, svg, avif, ico
@@ -128,6 +128,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/fboss/main/install.sh?v=ce4fa3a
 - Cmd+Shift+C / Cmd+Shift+V: paste / move copied files here
 - Cmd+F: search
 - Cmd+O: open with preferred app
+- Cmd+I: Show Info - kind, sizes, dates, symlink target and status, owner and mode, BSD flags, extended attributes (quarantine, download source, tags), code signature for apps
 - Cmd+T: toggle tree / flat view
 - Ctrl+R: refresh folder contents
 - `.` or Ctrl+M: open context menu for selected file (navigate with Up/Down, Enter to activate, Escape to dismiss)

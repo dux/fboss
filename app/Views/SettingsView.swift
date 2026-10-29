@@ -281,6 +281,7 @@ struct HelpSettingsView: View {
                 helpSection("Actions") {
                     shortcutRow("Cmd+F", "Toggle search (uses fd)")
                     shortcutRow("Cmd+O", "Open with preferred app")
+                    shortcutRow("Cmd+I", "Show Info (paths, dates, links, permissions, flags, xattrs)")
                     shortcutRow("Cmd+Backspace", "Move to trash")
                     shortcutRow("Cmd+Shift+D", "Duplicate file")
                     shortcutRow("Cmd+Shift+N", "Create new folder")
@@ -307,7 +308,7 @@ struct HelpSettingsView: View {
 
                 helpSection("Right-Click Menu") {
                     shortcutRow(". / Cmd+Shift+M", "Open context menu for selected file")
-                    helpText("View details, copy path, show in Finder, duplicate, add to zip, extract archive, color labels, enable unsigned app, move to trash.")
+                    helpText("Show info, copy path, show in Finder, duplicate, add to zip, extract archive, color labels, enable unsigned app, move to trash.")
                 }
 
                 helpSection("Drag and Drop") {

@@ -56,9 +56,7 @@ extension FileExplorerManager {
             openRemoteFile(url)
             return
         }
-        let ext = url.pathExtension.lowercased()
-        let fileType = ext.isEmpty ? "__empty__" : ext
-        let apps = AppSettings.shared.getPreferredApps(for: fileType)
+        let apps = AppSettings.shared.getPreferredApps(for: AppSettings.fileTypeKey(for: url, isDirectory: false))
         if let firstPath = apps.first,
            FileManager.default.fileExists(atPath: firstPath) {
             let appURL = URL(fileURLWithPath: firstPath)

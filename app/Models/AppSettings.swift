@@ -303,6 +303,13 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Key into `preferredApps` for an item: `__folder__`, its lowercased extension, or `__empty__`.
+    nonisolated static func fileTypeKey(for url: URL, isDirectory: Bool) -> String {
+        if isDirectory { return "__folder__" }
+        let ext = url.pathExtension.lowercased()
+        return ext.isEmpty ? "__empty__" : ext
+    }
+
     // Normalize file type: use "__empty__" for files without extension
     private func normalizeFileType(_ fileType: String) -> String {
         let trimmed = fileType.lowercased()
@@ -336,6 +343,15 @@ final class AppSettings: ObservableObject {
         let key = normalizeFileType(fileType)
         guard var apps = preferredApps[key], !apps.isEmpty else { return }
         apps.move(fromOffsets: source, toOffset: destination)
+        preferredApps[key] = apps
+    }
+
+    /// Makes `appPath` the fBoss default for the type: moved to the top if listed, inserted there otherwise.
+    func setDefaultPreferredApp(for fileType: String, appPath: String) {
+        let key = normalizeFileType(fileType)
+        var apps = preferredApps[key] ?? []
+        apps.removeAll { $0 == appPath }
+        apps.insert(appPath, at: 0)
         preferredApps[key] = apps
     }
 

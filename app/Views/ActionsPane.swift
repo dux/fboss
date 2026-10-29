@@ -47,11 +47,7 @@ struct ActionsPane: View {
     }
 
     private var fileType: String {
-        if isDirectory {
-            return "__folder__"
-        }
-        let ext = targetURL.pathExtension.lowercased()
-        return ext.isEmpty ? "__empty__" : ext
+        AppSettings.fileTypeKey(for: targetURL, isDirectory: isDirectory)
     }
 
     private var isImageFile: Bool {

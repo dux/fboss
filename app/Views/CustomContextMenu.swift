@@ -59,6 +59,14 @@ class ContextMenuManager: ObservableObject {
         self.isShowing = true
     }
 
+    /// Show Info sheet for a local item (menu entry and Cmd+I).
+    func showInfo(url: URL, isDirectory: Bool) {
+        guard url.isFileURL else { return }
+        detailsURL = url
+        detailsIsDirectory = isDirectory
+        showDetails = true
+    }
+
     func dismiss() {
         isShowing = false
         focusedIndex = 0
@@ -129,7 +137,7 @@ struct CustomContextMenuOverlay: View {
         }
         .sheet(isPresented: $contextMenu.showDetails) {
             if let url = contextMenu.detailsURL {
-                FileDetailsView(url: url, isDirectory: contextMenu.detailsIsDirectory)
+                FileInfoView(url: url, isDirectory: contextMenu.detailsIsDirectory)
             }
         }
         .sheet(isPresented: $contextMenu.showEmojiPicker) {
@@ -237,13 +245,10 @@ private struct CustomContextMenuContent: View {
                 manager.transferItems(to: url, move: true)
                                   }))
         }
-        // FileDetailsView stats the path with the local FileManager, so remote
-        // URLs would show a bogus location and never finish "Calculating..."
+        // Show Info stats the path with local APIs, so remote URLs are left out
         if url.isFileURL {
-            items.append(MenuItem(icon: "info.circle", label: "View Details", isDestructive: false, isColor: false, tagColor: nil, isTagged: false, action: act { [url, isDirectory] in
-                contextMenu.detailsURL = url
-                contextMenu.detailsIsDirectory = isDirectory
-                contextMenu.showDetails = true
+            items.append(MenuItem(icon: "info.circle", label: "Show Info", isDestructive: false, isColor: false, tagColor: nil, isTagged: false, action: act { [url, isDirectory] in
+                contextMenu.showInfo(url: url, isDirectory: isDirectory)
             }))
         }
         if !isCurrentFolder {
@@ -474,7 +479,7 @@ private struct CustomContextMenuContent: View {
     }
 
     private func sectionBreakAfterCopyToggle(_ items: [MenuItem]) -> Int {
-        guard let idx = items.firstIndex(where: { $0.label == "View Details" }) else { return -1 }
+        guard let idx = items.firstIndex(where: { $0.label == "Show Info" }) else { return -1 }
         return idx > 0 ? idx : -1
     }
 
