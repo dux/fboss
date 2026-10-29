@@ -60,6 +60,9 @@ task :build do
     sleep 0.3
     sh "rm -rf #{INSTALL_DIR}/#{BUNDLE_DIR}"
     sh "cp -R #{BUNDLE_DIR} #{INSTALL_DIR}/"
+    # macOS 26 puts a non-squircle bundle icon on a gray plate; a custom Finder icon is shown as is
+    sh %(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setIconForFileOptions(
+      $.NSImage.alloc.initWithContentsOfFile("#{Dir.pwd}/app/Resources/AppIcon.icns"), "#{INSTALL_DIR}/#{BUNDLE_DIR}", 0)' > /dev/null)
     sh "rm -rf #{BUNDLE_DIR}"
     say.green "installed to #{INSTALL_DIR}/#{BUNDLE_DIR}"
 
@@ -133,8 +136,7 @@ task :demo do
   desc 'Start web server and open demo page'
   proc do
     say 'starting web server for demo', :cyan
-    `open http://localhost:8000/web-demo/`
-    sh 'python3 -m http.server 8000'
+    sh 'swift bin/serve.swift --port 8000 --open web-demo/'
   end
 end
 
