@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import ImageIO
 
 struct FolderGalleryPreview: View {
     let folderURL: URL
@@ -42,34 +41,6 @@ struct FolderGalleryPreview: View {
     }
 }
 
-/// Shared, memory-pressure-evicting cache of downsampled gallery thumbnails.
-final class ThumbnailCache: @unchecked Sendable {
-    static let shared = ThumbnailCache()
-
-    private let cache = NSCache<NSString, NSImage>()
-
-    private init() {
-        cache.countLimit = 512
-    }
-
-    func image(for key: NSString) -> NSImage? { cache.object(forKey: key) }
-    func store(_ image: NSImage, for key: NSString) { cache.setObject(image, forKey: key) }
-
-    /// Decodes a downsampled thumbnail via ImageIO (decodes at target size, not full resolution).
-    /// Returns PNG data so the result can cross the concurrency boundary; nil for formats ImageIO
-    /// can't rasterize (e.g. SVG), which the caller loads directly instead.
-    nonisolated static func thumbnailData(url: URL, maxPixel: CGFloat) -> Data? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixel
-        ]
-        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
-    }
-}
-
 struct FolderGalleryThumbnail: View {
     let url: URL
     let size: CGFloat
@@ -102,32 +73,8 @@ struct FolderGalleryThumbnail: View {
     private func loadThumbnail() async {
         // Decode at box size * screen scale so thumbnails stay crisp on Retina.
         let scale = NSScreen.main?.backingScaleFactor ?? 2
-        let maxPixel = size * scale
-        let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-            .contentModificationDate?.timeIntervalSince1970 ?? 0
-        let key = "\(url.path)|\(Int(maxPixel))|\(mtime)" as NSString
-
-        if let cached = ThumbnailCache.shared.image(for: key) {
-            image = cached
-            return
+        if let result = await ThumbnailCache.shared.image(for: url, maxPixel: size * scale, source: .image) {
+            image = result
         }
-
-        let target = url
-        let px = maxPixel
-        let data = await Task.detached(priority: .userInitiated) {
-            ThumbnailCache.thumbnailData(url: target, maxPixel: px)
-        }.value
-
-        let result: NSImage?
-        if let data, let decoded = NSImage(data: data) {
-            result = decoded
-        } else {
-            // ImageIO couldn't rasterize (e.g. SVG); load it directly.
-            result = NSImage(contentsOf: target)
-        }
-
-        guard let result else { return }
-        ThumbnailCache.shared.store(result, for: key)
-        image = result
     }
 }

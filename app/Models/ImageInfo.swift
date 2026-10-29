@@ -17,7 +17,7 @@ struct ImageInfo: Sendable {
         coordinateText.flatMap { URL(string: "https://www.google.com/maps?q=\($0.replacingOccurrences(of: " ", with: ""))") }
     }
 
-    nonisolated static func read(from url: URL) -> ImageInfo {
+    nonisolated static func read(from url: URL) -> Self {
         var fileRows: [(key: String, value: String)] = []
 
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
@@ -32,7 +32,7 @@ struct ImageInfo: Sendable {
         }
 
         let properties = imageProperties(at: url)
-        return ImageInfo(
+        return Self(
             fileRows: fileRows,
             imageRows: properties.map(exifRows) ?? [],
             coordinate: properties.flatMap(gpsCoordinate)

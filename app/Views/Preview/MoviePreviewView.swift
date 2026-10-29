@@ -39,7 +39,7 @@ struct MoviePreviewView: View {
 
             let info = await MovieManager.shared.getMovieInfo(for: folderURL)
             if let info {
-                coverData = await Self.loadCoverData(for: folderURL, posterURLString: info.posterURL)
+                coverData = await MovieManager.shared.coverData(for: folderURL, posterURL: info.posterURL)
             }
             movieInfo = info
             isLoading = false
@@ -98,77 +98,12 @@ struct MoviePreviewView: View {
         Task { @MainActor in
             let info = await MovieManager.shared.getMovieInfoByIMDB(id: imdbID, for: folderURL)
             if let info {
-                coverData = await Self.loadCoverData(for: folderURL, posterURLString: info.posterURL)
+                coverData = await MovieManager.shared.coverData(for: folderURL, posterURL: info.posterURL)
             }
             movieInfo = info
             isLookingUp = false
             imdbInput = ""
         }
-    }
-
-    // MARK: - Poster (cover.jpg) caching
-
-    /// Returns the cached `cover.jpg` bytes, downloading and caching them once if missing.
-    private static func loadCoverData(for movieURL: URL, posterURLString: String) async -> Data? {
-        let coverPath = diskCachePath(for: movieURL)
-
-        if let coverPath, let data = try? Data(contentsOf: coverPath), !data.isEmpty {
-            return data
-        }
-
-        guard posterURLString != "N/A", let poster = URL(string: posterURLString) else { return nil }
-        let url = upgradePosterURL(poster)
-
-        let data: Data? = await Task.detached(priority: .utility) {
-            do {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 8
-                let (data, response) = try await posterSession.data(for: request)
-                guard let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode),
-                      !data.isEmpty else { return nil }
-                return data
-            } catch {
-                return nil
-            }
-        }.value
-
-        if let data, let coverPath {
-            try? data.write(to: coverPath, options: .atomic)
-        }
-        return data
-    }
-
-    private static let posterSession: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.waitsForConnectivity = false
-        config.timeoutIntervalForRequest = 8
-        config.timeoutIntervalForResource = 12
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        return URLSession(configuration: config)
-    }()
-
-    private static func diskCachePath(for movieURL: URL) -> URL? {
-        var isDir: ObjCBool = false
-        FileManager.default.fileExists(atPath: movieURL.path, isDirectory: &isDir)
-        if isDir.boolValue {
-            return movieURL.appendingPathComponent("cover.jpg")
-        }
-        let dir = movieURL.deletingLastPathComponent()
-        let name = movieURL.deletingPathExtension().lastPathComponent
-        return dir.appendingPathComponent("\(name).jpg")
-    }
-
-    // IMDb posters often include a size token like ._V1_...jpg; request a larger height to preserve poster framing.
-    private static func upgradePosterURL(_ url: URL) -> URL {
-        let absolute = url.absoluteString
-        guard absolute.contains("media-amazon.com"),
-              let range = absolute.range(of: "._V1_") else {
-            return url
-        }
-        let prefix = absolute[..<range.lowerBound]
-        let upgraded = "\(prefix)._V1_SY2000_.jpg"
-        return URL(string: upgraded) ?? url
     }
 }
 

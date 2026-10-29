@@ -151,6 +151,7 @@ All `@MainActor`:
 - **FolderSizeCalculator** -- a stateless, cancellable recursive measurement shared by size sorting, file details, and DMG previews; it reports failures instead of caching partial totals
 - **MountsManager** -- SSH/SMB favorites, connect dialog, server URL normalization
 - **OperationManager** -- cancellable background operation runner with the running indicator
+- **ThumbnailCache** (`Models/ThumbnailCache.swift`) -- NSCache of downsampled thumbnails keyed by path, source, pixel size and mtime; sources are ImageIO pixels, Quick Look thumbnails and embedded audio artwork
 - **ToastManager** -- toast notification show/dismiss
 - **ContextMenuManager** -- right-click menu state
 
@@ -235,6 +236,13 @@ The dialog likewise owns its cursor through `Views/FolderPreviewMouseArea.swift`
 `NSTrackingArea`s are purely geometric, so rows under the floating dialog still report; the model ignores row events while the dialog is entered, and the row mouse area also asks `dialogContains` (the `hoverShield`, fed by the dialog's AppKit window frame) so uncovered parts of those rows do not highlight.
 AppKit sends no exit for a view that leaves the window, so the dialog's mouse layer reports its own exit on removal and the model refuses a dialog enter while no dialog is shown.
 Leaving a row only schedules a dismiss (`leaveGrace`, 150 ms) so the cursor can cross onto the dialog.
+
+### Preview grid
+The toolbar's View group (Hidden | Search | Preview) toggles `AppSettings.browserPreview`, which swaps `FileTreeView` for `Views/PreviewGrid/PreviewGridView.swift`: the same `allItems` as 256 pt tiles under the folder's breadcrumb row.
+Tiles reuse `FileRowMouseArea` for click, double click, modifiers and drag, so cursor, copy and opening behave like tree rows.
+Each tile picks its face by type: images through `ThumbnailCache`, markdown as a styled page (`MarkdownSnippet` parses the first 4 KB into heading/list/quote/code/paragraph blocks), text and source files as a monospace page (`TextCard`), audio as embedded artwork, and everything else as its Quick Look thumbnail with the file icon as fallback.
+`FolderTile` summarizes a folder off the main actor: a movie folder (same detection as the movie pane) shows its poster upright from `MovieManager.posterFile`, which looks it up and saves `cover.jpg` like the movie pane does; other folders show a 2x2 mosaic of their first images or their icon, with the entry count; packages show their Quick Look icon.
+Remote entries always show their icon.
 
 ### Drop handling
 Both views accept `.fileURL` drops -- copies files to current directory with name deduplication.

@@ -312,72 +312,46 @@ struct ActionButtonBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(action: {
-                manager.toggleShowHidden()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: manager.showHidden ? "eye" : "eye.slash")
-                        .textStyle(.buttons)
-                    Text(manager.showHidden ? "hide hidden" : "show hidden")
-                        .textStyle(.buttons)
-                }
-            }
-            .buttonStyle(.bordered)
-
-            Button(action: {
-                if manager.isSearching {
+            segmentGroup {
+                segment("List", isOn: !manager.isSearching && !settings.browserPreview) {
                     manager.cancelSearch()
-                } else {
-                    manager.startSearch()
+                    settings.browserPreview = false
                 }
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: manager.isSearching ? "xmark" : "magnifyingglass")
-                        .textStyle(.buttons)
-                    Text(manager.isSearching ? "Close" : "Search")
-                        .textStyle(.buttons)
+
+                segment("Search", isOn: manager.isSearching) {
+                    if !manager.isSearching { manager.startSearch() }
                 }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(!manager.canSearchCurrentSource)
+                .opacity(manager.canSearchCurrentSource ? 1 : 0.4)
+                .help(manager.canSearchCurrentSource ? "Search this folder" : "Search is not supported on this source")
+
+                segment("Preview", isOn: !manager.isSearching && settings.browserPreview) {
+                    manager.cancelSearch()
+                    settings.browserPreview = true
+                }
+                .help("Show large previews of images and markdown files")
             }
-            .buttonStyle(.bordered)
-            .keyboardShortcut("f", modifiers: .command)
-            .disabled(!manager.canSearchCurrentSource)
-            .help(manager.canSearchCurrentSource ? "Search this folder" : "Search is not supported on this source")
+
+            segmentGroup {
+                segment("Hidden", isOn: manager.showHidden) {
+                    manager.toggleShowHidden()
+                }
+                .help(manager.showHidden ? "Hide hidden files" : "Show hidden files")
+            }
 
             Divider()
                 .frame(height: 20)
 
-            Text("Sort by")
-                .textStyle(.buttons)
-                .lineLimit(1)
-                .fixedSize()
-                .foregroundColor(.secondary)
+            groupLabel("Sort by")
 
-            HStack(spacing: 0) {
+            segmentGroup {
                 ForEach(SortMode.allCases, id: \.self) { mode in
-                    Button(action: {
+                    segment(mode.rawValue, isOn: manager.sortMode == mode) {
                         manager.sortMode = mode
-                    }) {
-                        Text(mode.rawValue)
-                            .textStyle(.buttons, weight: manager.sortMode == mode ? .semibold : .regular)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .foregroundColor(manager.sortMode == mode ? .white : .primary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(
-                                manager.sortMode == mode ?
-                                Color.accentColor : Color.clear
-                            )
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(NSColor.separatorColor), lineWidth: 1)
-            )
 
             Divider()
                 .frame(height: 20)
@@ -431,6 +405,39 @@ struct ActionButtonBar: View {
         }
         .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
         .customContextMenu(url: manager.currentPath)
+    }
+
+    private func groupLabel(_ title: String) -> some View {
+        Text(title)
+            .textStyle(.buttons)
+            .lineLimit(1)
+            .fixedSize()
+            .foregroundColor(.secondary)
+    }
+
+    private func segmentGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 0, content: content)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+            )
+    }
+
+    private func segment(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .textStyle(.buttons, weight: isOn ? .semibold : .regular)
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundColor(isOn ? .white : .primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(isOn ? Color.accentColor : Color.clear)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

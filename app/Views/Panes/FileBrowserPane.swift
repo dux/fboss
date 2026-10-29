@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FileBrowserPane: View {
     @ObservedObject var manager: FileExplorerManager
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -13,6 +14,8 @@ struct FileBrowserPane: View {
                     SearchBar(manager: manager)
                     Divider()
                     SearchResultsView(manager: manager)
+                } else if settings.browserPreview {
+                    PreviewGridView(manager: manager)
                 } else {
                     FileTreeView(manager: manager)
                 }

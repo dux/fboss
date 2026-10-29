@@ -94,6 +94,82 @@ class MovieManager {
         }.value
     }
 
+    // MARK: - Poster (cover.jpg) caching
+
+    /// Returns the cached `cover.jpg` bytes, downloading and caching them once if missing.
+    func coverData(for movieURL: URL, posterURL: String) async -> Data? {
+        await Task.detached(priority: .utility) {
+            await Self.loadCover(for: movieURL, posterURLString: posterURL)
+        }.value
+    }
+
+    /// The saved cover file for the preview grid, looked up and downloaded first when missing.
+    func posterFile(for movieURL: URL) async -> URL? {
+        let saved = await Task.detached(priority: .userInitiated) { Self.savedCoverPath(for: movieURL) }.value
+        if let saved { return saved }
+        guard let info = await getMovieInfo(for: movieURL),
+              await coverData(for: movieURL, posterURL: info.posterURL) != nil else { return nil }
+        return await Task.detached(priority: .userInitiated) { Self.savedCoverPath(for: movieURL) }.value
+    }
+
+    nonisolated private static func loadCover(for movieURL: URL, posterURLString: String) async -> Data? {
+        if let saved = savedCover(for: movieURL) { return saved }
+        guard posterURLString != "N/A", let poster = URL(string: posterURLString) else { return nil }
+
+        var request = URLRequest(url: upgradePosterURL(poster))
+        request.timeoutInterval = 8
+        guard let (data, response) = try? await posterSession.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              !data.isEmpty else { return nil }
+
+        try? data.write(to: coverPath(for: movieURL), options: .atomic)
+        return data
+    }
+
+    nonisolated private static func savedCover(for movieURL: URL) -> Data? {
+        guard let path = savedCoverPath(for: movieURL) else { return nil }
+        return try? Data(contentsOf: path)
+    }
+
+    nonisolated private static func savedCoverPath(for movieURL: URL) -> URL? {
+        let path = coverPath(for: movieURL)
+        let size = (try? path.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        return size > 0 ? path : nil
+    }
+
+    nonisolated private static let posterSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 12
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
+    nonisolated private static func coverPath(for movieURL: URL) -> URL {
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: movieURL.path, isDirectory: &isDir)
+        if isDir.boolValue {
+            return movieURL.appendingPathComponent("cover.jpg")
+        }
+        let dir = movieURL.deletingLastPathComponent()
+        let name = movieURL.deletingPathExtension().lastPathComponent
+        return dir.appendingPathComponent("\(name).jpg")
+    }
+
+    // IMDb posters often include a size token like ._V1_...jpg; request a larger height to preserve poster framing.
+    nonisolated private static func upgradePosterURL(_ url: URL) -> URL {
+        let absolute = url.absoluteString
+        guard absolute.contains("media-amazon.com"),
+              let range = absolute.range(of: "._V1_") else {
+            return url
+        }
+        let prefix = absolute[..<range.lowerBound]
+        let upgraded = "\(prefix)._V1_SY2000_.jpg"
+        return URL(string: upgraded) ?? url
+    }
+
     // MARK: - Detection
 
     nonisolated static func hasVideoFile(in folderURL: URL) -> Bool {

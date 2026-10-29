@@ -73,6 +73,11 @@ final class AppSettings: ObservableObject {
         didSet { saveAsync() }
     }
 
+    // Browser shows a grid of large previews instead of the file list
+    @Published var browserPreview: Bool {
+        didSet { saveAsync() }
+    }
+
     // Image preview shows file/EXIF info and frames the image
     @Published var imageShowInfo: Bool {
         didSet { saveAsync() }
@@ -123,6 +128,7 @@ final class AppSettings: ObservableObject {
         flatFolders = false
         audioAutoNext = true
         imageShowInfo = false
+        browserPreview = false
         omdbAPIKey = ""
         fontDefault = 14
         fontButtons = 12
@@ -214,6 +220,9 @@ final class AppSettings: ObservableObject {
         if let showInfo = json["imageShowInfo"] as? Bool {
             imageShowInfo = showInfo
         }
+        if let preview = json["browserPreview"] as? Bool {
+            browserPreview = preview
+        }
         if let key = json["omdbAPIKey"] as? String {
             omdbAPIKey = key
         }
@@ -245,6 +254,7 @@ final class AppSettings: ObservableObject {
             flatFolders: flatFolders,
             audioAutoNext: audioAutoNext,
             imageShowInfo: imageShowInfo,
+            browserPreview: browserPreview,
             omdbKey: omdbAPIKey,
             recentApps: recentlyUsedApps,
             fontDefault: fontDefault,
@@ -274,6 +284,7 @@ final class AppSettings: ObservableObject {
         let flatFolders: Bool
         let audioAutoNext: Bool
         let imageShowInfo: Bool
+        let browserPreview: Bool
         let omdbKey: String
         let recentApps: [String]
         let fontDefault: CGFloat
@@ -288,7 +299,7 @@ final class AppSettings: ObservableObject {
             case winX = "windowX", winY = "windowY", winW = "windowWidth", winH = "windowHeight"
             case apps = "preferredApps", folderHandler = "defaultFolderHandler", omdbKey = "omdbAPIKey"
             case recentApps = "recentlyUsedApps"
-            case flatFolders, audioAutoNext, imageShowInfo, fontDefault, fontButtons, fontSmall, fontTitle, copySkipFolders
+            case flatFolders, audioAutoNext, imageShowInfo, browserPreview, fontDefault, fontButtons, fontSmall, fontTitle, copySkipFolders
         }
     }
 
